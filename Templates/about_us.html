@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About Us | YourTreasurer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        /* Specific overrides for the About Us content readability */
+        .about-section {
+            max-width: 800px;
+            margin: auto;
+            text-align: left;
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(15, 40, 84, 0.1);
+            backdrop-filter: blur(10px);
+        }
+        .about-title {
+            color: var(--navy-dark);
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            border-bottom: 4px solid var(--blue-soft);
+            display: inline-block;
+        }
+        .about-text {
+            line-height: 1.8;
+            color: var(--blue-mid);
+            font-size: 1.1rem;
+            margin-bottom: 20px;
+        }
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        .feature-list li {
+            margin-bottom: 10px;
+            padding-left: 25px;
+            position: relative;
+        }
+        .feature-list li::before {
+            content: "⚓";
+            position: absolute;
+            left: 0;
+            color: var(--navy-dark);
+        }
+    </style>
+</head>
+<body>
+    <div class="brand-logo-top">
+        <a href="/"><img src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo"></a>
+    </div>
+
+    <button class="menu-trigger" id="menu-btn"><span>☰ Menu</span></button>
+    <div class="menu-backdrop" id="menu-backdrop"></div>
+
+    <nav id="side-nav" class="side-nav">
+        <button class="close-btn" id="close-btn">&times;</button>
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/my_profile">My Profile</a>
+            <a href="/my_expenses">My Expenses</a>
+            <a href="/analysis">Analysis</a>
+            <a href="/interval_spend">Interval Spend</a>
+            <a href="/about_us" class="active">About Us</a>
+        </div>
+    </nav>
+
+    <div class="dynamic-bg" style="background-image: url('{{ url_for('static', filename='images/bg.svg') }}');"></div>
+
+    <div class="main-layout-wrapper">
+        <div class="about-section">
+            <h1 class="about-title">The Mission</h1>
+            <p class="about-text">
+                Financial literacy is often the "missing course" in a student's curriculum. <strong>YourTreasurer</strong> was born from the need to bridge the gap between receiving a monthly allowance and making it last until the final day.
+            </p>
+            <p class="about-text">
+                Designed specifically for the campus ecosystem, we don't just track numbers; we manage relationships and liabilities. From splitting canteen bills with friends to ensuring your hostel rent is paid on time, YourTreasurer acts as your personal digital CFO.
+            </p>
+            
+            <h2 class="about-title" style="font-size: 1.8rem;">Core Pillars</h2>
+            <ul class="feature-list">
+                <li><strong>Proactive Alerts:</strong> We notify you before you hit your limit, not after.</li>
+                <li><strong>Social Accountability:</strong> Automated reminders for friends who "forgot" to pay you back.</li>
+                <li><strong>Analytical Insight:</strong> Visualizing where your money goes—from junk food to education.</li>
+                <li><strong>Privacy First:</strong> Securely managing your financial proof with Cloudinary and MongoDB.</li>
+            </ul>
+        </div>
+    </div>
+
+    <footer class="common-footer">
+        YourTreasurer &copy; 2026 | Helping Hand
+    </footer>
+
+    <script>
+        const menuBtn = document.getElementById('menu-btn');
+        const closeBtn = document.getElementById('close-btn');
+        const sideNav = document.getElementById('side-nav');
+        const backdrop = document.getElementById('menu-backdrop');
+
+        function toggleMenu() {
+            sideNav.classList.toggle('open');
+            backdrop.classList.toggle('active');
+        }
+
+        menuBtn.addEventListener('click', toggleMenu);
+        closeBtn.addEventListener('click', toggleMenu);
+        backdrop.addEventListener('click', toggleMenu);
+    </script>
+</body>
+</html>

@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YourTreasurer | Budget Gateway</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/Style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/profile.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="profile-page">
+
+    <!-- Brand Logo -->
+    <div class="brand-logo-top">
+        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="YourTreasurer Logo">
+    </div>
+
+    <!-- Dynamic Background -->
+    <div id="dynamic-bg" class="dynamic-bg" style="background-image: url('{{ url_for('static', filename='images/bg.svg') }}');"></div>
+    <div id="hover-bg" class="dynamic-bg hover-layer"></div>
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="flash-container">
+                {% for category, message in messages %}
+                    <div class="flash-msg flash-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <!-- Gateway Card -->
+    <div class="gateway-wrapper">
+        <div class="gateway-card" id="gateway-card">
+
+            <!-- Header -->
+            <div class="gateway-header">
+                <div class="lock-icon" id="lock-icon">🔐</div>
+                <h1 class="gateway-title">Budget Gateway</h1>
+                <p class="gateway-subtitle">Your Personal Finance Vault</p>
+            </div>
+
+            <!-- Tab Switcher -->
+            <div class="tab-switcher">
+                <button class="tab-btn active" id="tab-login" onclick="switchTab('login')">Login</button>
+                <button class="tab-btn" id="tab-register" onclick="switchTab('register')">New User</button>
+            </div>
+
+            <!-- ===== LOGIN FORM ===== -->
+            <form id="form-login" class="gateway-form active-form" action="/my_profile" method="POST">
+                <input type="hidden" name="form_type" value="login">
+
+                <div class="input-group">
+                    <label for="login-name">Your Name</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">👤</span>
+                        <input type="text" id="login-name" name="name"
+                               placeholder="Enter your name" required autocomplete="off">
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label for="login-password">Password</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">&#128273;</span>
+                        <input type="password" id="login-password" name="password"
+                               placeholder="Enter your password" required>
+                        <button type="button" class="eye-toggle" onclick="togglePass('login-password', this)">&#128065;</button>
+                    </div>
+                    <div class="strength-track">
+                        <div class="strength-bar" id="login-strength-bar"></div>
+                    </div>
+                    <span class="strength-label" id="login-strength-label"></span>
+                </div>
+
+                <button type="submit" class="gateway-btn" id="login-btn">
+                    <span class="btn-text">Unlock Vault</span>
+                    <span class="btn-icon">🚀</span>
+                </button>
+            </form>
+
+            <!-- ===== REGISTER FORM ===== -->
+            <form id="form-register" class="gateway-form" action="/my_profile" method="POST">
+                <input type="hidden" name="form_type" value="register">
+
+                <div class="input-group">
+                    <label for="reg-name">Full Name</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">👤</span>
+                        <input type="text" id="reg-name" name="name"
+                               placeholder="Enter your full name" required autocomplete="off">
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label for="reg-password">Create Password</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">&#128273;</span>
+                        <input type="password" id="reg-password" name="password"
+                               placeholder="Min 8 chars, A-Z, a-z, 0-9" required>
+                        <button type="button" class="eye-toggle" onclick="togglePass('reg-password', this)">&#128065;</button>
+                    </div>
+                    <div class="strength-track">
+                        <div class="strength-bar" id="reg-strength-bar"></div>
+                    </div>
+                    <span class="strength-label" id="reg-strength-label"></span>
+                </div>
+
+                <div class="input-group">
+                    <label for="reg-limit">Monthly Budget (₹)</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">💰</span>
+                        <input type="number" id="reg-limit" name="monthly_limit"
+                               placeholder="e.g. 10000" min="100" required>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label for="reg-email">Email Address</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">📧</span>
+                        <input type="email" id="reg-email" name="email"
+                               placeholder="you@example.com" required>
+                    </div>
+                </div>
+
+                <button type="submit" class="gateway-btn register-btn" id="register-btn">
+                    <span class="btn-text">Create My Vault</span>
+                    <span class="btn-icon">✨</span>
+                </button>
+            </form>
+
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="common-footer">
+        YourTreasurer &copy; 2026 | Helping Hand
+    </footer>
+
+    <!-- Validation + Chime Script -->
+    <script>
+        // ═══════════════════════════════════════════════════
+        // INLINE VALIDATION HELPERS
+        // ═══════════════════════════════════════════════════
+        function showInlineError(inputId, message) {
+            clearInlineError(inputId);
+            const input = document.getElementById(inputId);
+            const wrapper = input.closest('.input-group');
+            const err = document.createElement('p');
+            err.className = 'inline-error';
+            err.textContent = '\u26a0 ' + message;
+            wrapper.appendChild(err);
+            input.style.borderColor = '#ff6b6b';
+        }
+
+        function clearInlineError(inputId) {
+            const input = document.getElementById(inputId);
+            const wrapper = input.closest('.input-group');
+            const existing = wrapper.querySelector('.inline-error');
+            if (existing) existing.remove();
+            input.style.borderColor = '';
+        }
+
+        function markValid(inputId) {
+            document.getElementById(inputId).style.borderColor = '#2ecc71';
+        }
+
+        // ── Regex patterns (mirror backend exactly) ───────────────────────
+        const NAME_RE  = /^[A-Za-z][A-Za-z\s'\-]{2,39}$/;
+        const EMAIL_RE = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
+        const BLOCKED  = ['mailinator.com','guerrillamail.com','trashmail.com',
+                          'tempmail.com','throwaway.email','yopmail.com'];
+
+        // ── NAME — min 3 chars, letters/spaces/hyphens/apostrophes only ───
+        function validateNameField(id) {
+            const val = document.getElementById(id).value.trim();
+            if (val.length < 3)           { showInlineError(id, 'Name must be at least 3 characters long.'); return false; }
+            if (val.length > 40)          { showInlineError(id, 'Name must be 40 characters or fewer.'); return false; }
+            if (/\d/.test(val))           { showInlineError(id, 'Name cannot contain numbers.'); return false; }
+            if (/[^A-Za-z\s'\-]/.test(val)) { showInlineError(id, 'Only letters, spaces, hyphens, or apostrophes allowed.'); return false; }
+            if (/[\s\-']{2,}/.test(val))  { showInlineError(id, 'No consecutive spaces, hyphens, or apostrophes.'); return false; }
+            if (!NAME_RE.test(val))       { showInlineError(id, 'Name must start with a letter.'); return false; }
+            clearInlineError(id); markValid(id); return true;
+        }
+
+        // ── PASSWORD — min 8, uppercase + lowercase + digit, no spaces ────
+        function validatePasswordField(id) {
+            const val = document.getElementById(id).value;
+            if (val.length < 6)               { showInlineError(id, 'Password must be at least 6 characters.'); return false; }
+            if (!/[A-Za-z]/.test(val))        { showInlineError(id, 'Password must contain at least one letter.'); return false; }
+            if (!/\d/.test(val))              { showInlineError(id, 'Password must contain at least one number.'); return false; }
+            clearInlineError(id); markValid(id); return true;
+        }
+
+        function validateEmailField(id) {
+            const val = document.getElementById(id).value.trim();
+            if (!val)                         { showInlineError(id, 'Email is required.'); return false; }
+            if (!EMAIL_RE.test(val))          { showInlineError(id, 'Enter a valid email, e.g. you@gmail.com'); return false; }
+            clearInlineError(id); markValid(id); return true;
+        }
+
+        function validateBudgetField(id) {
+            const val = parseFloat(document.getElementById(id).value);
+            if (isNaN(val) || val < 100)      { showInlineError(id, 'Budget must be at least ₹100.'); return false; }
+            clearInlineError(id); markValid(id); return true;
+        }
+
+        // ── Real-time feedback on blur ────────────────────────────────────
+        const loginFields = [
+            { id: 'login-name',     fn: () => validateNameField('login-name') },
+            { id: 'login-password', fn: () => validatePasswordField('login-password') },
+        ];
+        const regFields = [
+            { id: 'reg-name',     fn: () => validateNameField('reg-name') },
+            { id: 'reg-password', fn: () => validatePasswordField('reg-password') },
+            { id: 'reg-email',    fn: () => validateEmailField('reg-email') },
+            { id: 'reg-limit',    fn: () => validateBudgetField('reg-limit') },
+        ];
+        [...loginFields, ...regFields].forEach(({ id, fn }) => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('blur', fn);
+                el.addEventListener('input', () => { clearInlineError(id); el.style.borderColor = ''; });
+            }
+        });
+
+        // ── Form submit — validate before sending to server ───────────────
+        document.getElementById('form-login').addEventListener('submit', function(e) {
+            const nameOk = validateNameField('login-name');
+            const passOk = validatePasswordField('login-password');
+            if (!nameOk || !passOk) { e.preventDefault(); return; }
+            // Show loading state on button
+            const btn = document.getElementById('login-btn');
+            btn.innerHTML = '<span class="btn-text">Unlocking...</span> <span class="btn-icon">⏳</span>';
+            btn.disabled = true;
+        });
+
+        document.getElementById('form-register').addEventListener('submit', function(e) {
+            const nameOk   = validateNameField('reg-name');
+            const passOk   = validatePasswordField('reg-password');
+            const emailOk  = validateEmailField('reg-email');
+            const budgetOk = validateBudgetField('reg-limit');
+            if (!nameOk || !passOk || !emailOk || !budgetOk) { e.preventDefault(); return; }
+            // Show loading state
+            const btn = document.getElementById('register-btn');
+            btn.innerHTML = '<span class="btn-text">Creating Vault...</span> <span class="btn-icon">⏳</span>';
+            btn.disabled = true;
+        });
+
+        // ═══════════════════════════════════════════════════
+        // TAB SWITCHER
+        // ═══════════════════════════════════════════════════
+        function switchTab(tab) {
+            const loginForm    = document.getElementById('form-login');
+            const registerForm = document.getElementById('form-register');
+            const tabLogin     = document.getElementById('tab-login');
+            const tabRegister  = document.getElementById('tab-register');
+            if (tab === 'login') {
+                loginForm.classList.add('active-form');
+                registerForm.classList.remove('active-form');
+                tabLogin.classList.add('active');
+                tabRegister.classList.remove('active');
+            } else {
+                registerForm.classList.add('active-form');
+                loginForm.classList.remove('active-form');
+                tabRegister.classList.add('active');
+                tabLogin.classList.remove('active');
+            }
+        }
+
+        // ═══════════════════════════════════════════════════
+        // PASSWORD SHOW / HIDE
+        // ═══════════════════════════════════════════════════
+        function togglePass(inputId, btn) {
+            const input = document.getElementById(inputId);
+            if (input.type === 'password') {
+                input.type = 'text';
+                btn.textContent = '🙈';
+            } else {
+                input.type = 'password';
+                btn.textContent = '👁';
+            }
+        }
+
+        // ═══════════════════════════════════════════════════
+        // DIGITAL UNLOCK CHIME (Web Audio API)
+        // ═══════════════════════════════════════════════════
+        function playUnlockChime() {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return;
+            const ctx = new AudioCtx();
+            const notes = [523.25, 659.25, 783.99, 1046.5]; // C5 E5 G5 C6
+            notes.forEach((freq, i) => {
+                const osc  = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.12);
+                gain.gain.setValueAtTime(0.28, ctx.currentTime + i * 0.12);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.12 + 0.45);
+                osc.start(ctx.currentTime + i * 0.12);
+                osc.stop(ctx.currentTime + i * 0.12 + 0.45);
+            });
+        }
+
+        // ═══════════════════════════════════════════════════
+        // ON LOAD — flash handling + chime
+        // ═══════════════════════════════════════════════════
+        window.addEventListener('DOMContentLoaded', () => {
+            // Play chime + unlock icon on success flash
+            const successFlash = document.querySelector('.flash-success');
+            if (successFlash) {
+                playUnlockChime();
+                const lockIcon = document.getElementById('lock-icon');
+                lockIcon.textContent = '🔓';
+                lockIcon.style.animation = 'bounceIn 0.5s ease forwards';
+            }
+
+            // Auto-dismiss flash messages after 5 s
+            setTimeout(() => {
+                document.querySelectorAll('.flash-msg').forEach(msg => {
+                    msg.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+                    msg.style.opacity = '0';
+                    msg.style.transform = 'translateY(-10px)';
+                    setTimeout(() => msg.remove(), 400);
+                });
+            }, 5000);
+        });
+    </script>
+</body>
+</html>
