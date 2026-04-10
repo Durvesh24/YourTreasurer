@@ -18,6 +18,22 @@ load_dotenv()  # Loads variables from .env into os.environ
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "campuscoin_tracker_2026")
 
+# ── Jinja2 custom filter: Indian number format ──────────────────────────────
+@app.template_filter('format_inr')
+def format_inr(value):
+    """Format a number as Indian rupee with commas (e.g. 1,00,000)."""
+    try:
+        value = int(value)
+        s = str(value)
+        if len(s) <= 3:
+            return f"₹{s}"
+        last3 = s[-3:]
+        rest   = s[:-3]
+        parts  = [rest[max(i-2,0):i] for i in range(len(rest), 0, -2)][::-1]
+        return f"₹{','.join(p for p in parts if p)},{last3}"
+    except Exception:
+        return f"₹{value}"
+
 # ──────────────────────────────────────────────────────────
 # CONFIGURATION
 # ──────────────────────────────────────────────────────────
@@ -176,9 +192,43 @@ def require_login():
 # CORE ROUTES
 # ──────────────────────────────────────────────────────────
 
+# Valid expense categories
+EXPENSE_CATEGORIES = [
+    'Educational', 'Lifestyle', 'Healthy Food',
+    'Junk Food', 'Hostel Rent', 'Travelling', 'Other'
+]
+
 @app.route('/')
 def home():
-    return render_template('index.html')
+    """Home dashboard — fetches live budget stats and today's expenses."""
+    username = session.get('username')
+
+    # Zero-Persistence: always re-fetch from DB
+    user = mongo.db.users.find_one({'name': username}, {'password': 0})
+
+    # Today's expense summary
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_expenses = list(
+        mongo.db.daily_expenses
+        .find({'username': username, 'created_at': {'$gte': today_start}})
+        .sort('created_at', -1)
+        .limit(5)
+    )
+    today_total = sum(
+        e.get('amount', 0) for e in today_expenses if not e.get('is_loan', False)
+    )
+
+    # Check if coins animation should play (set by add_expense on success)
+    play_coins = session.pop('play_coins', False)
+
+    return render_template(
+        'index.html',
+        user=user,
+        today_expenses=today_expenses,
+        today_total=today_total,
+        categories=EXPENSE_CATEGORIES,
+        play_coins=play_coins,
+    )
 
 
 @app.route('/my_profile', methods=['GET', 'POST'])
@@ -405,16 +455,131 @@ def about_us():
 
 @app.route('/add_expense', methods=['POST'])
 def add_expense():
-    """Handles adding a new daily expense (Task 2)."""
+    """
+    Task 2 — Daily Expense & Loan Entry.
+    Validates input, inserts into daily_expenses collection,
+    updates user's total_spent & balance, sets coin animation flag.
+    """
+    username = session.get('username')
+
     try:
-        form_data = request.form.to_dict()
-        # TODO Task 2: Insert into daily_expenses collection
-        # TODO Task 5: Handle Cloudinary receipt upload
-        # TODO Task 6: Trigger guardian email if budget threshold crossed
-        return redirect(url_for('my_expenses'))
+        # ── Read form fields ──────────────────────────────────────────────
+        category    = request.form.get('category', '').strip()
+        amount_str  = request.form.get('amount', '').strip()
+        description = request.form.get('description', '').strip()
+        exp_date_str= request.form.get('expense_date', '').strip()
+        is_loan     = request.form.get('is_loan') == 'on'
+
+        # ── Validate required fields ──────────────────────────────────────
+        if not category or category not in EXPENSE_CATEGORIES:
+            flash('Please select a valid expense category.', 'error')
+            return redirect(url_for('home'))
+
+        if not amount_str:
+            flash('Amount is required.', 'error')
+            return redirect(url_for('home'))
+
+        try:
+            amount = round(float(amount_str), 2)
+            if amount <= 0:
+                flash('Amount must be greater than zero.', 'error')
+                return redirect(url_for('home'))
+            if amount > 100000:
+                flash('Single expense cannot exceed \u20b91,00,000.', 'error')
+                return redirect(url_for('home'))
+        except ValueError:
+            flash('Please enter a valid number for amount.', 'error')
+            return redirect(url_for('home'))
+
+        # ── Parse expense date ────────────────────────────────────────────
+        try:
+            expense_date = datetime.strptime(exp_date_str, '%Y-%m-%d') if exp_date_str else datetime.utcnow()
+        except ValueError:
+            expense_date = datetime.utcnow()
+
+        # ── Build base expense document ───────────────────────────────────
+        expense_doc = {
+            'username'     : username,
+            'category'     : category,
+            'amount'       : amount,
+            'description'  : description or f'{category} expense',
+            'expense_date' : expense_date,
+            'is_loan'      : is_loan,
+            'created_at'   : datetime.utcnow(),
+        }
+
+        # ── Loan-specific fields ──────────────────────────────────────────
+        if is_loan:
+            friend_name  = request.form.get('friend_name', '').strip()
+            friend_email = request.form.get('friend_email', '').strip()
+            relationship = request.form.get('relationship', '').strip()
+
+            if not friend_name or not friend_email:
+                flash('Friend name and email are required for a loan entry.', 'error')
+                return redirect(url_for('home'))
+
+            # Basic email check
+            if not re.match(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$", friend_email):
+                flash('Please enter a valid email for your friend.', 'error')
+                return redirect(url_for('home'))
+
+            expense_doc.update({
+                'friend_name' : friend_name,
+                'friend_email': friend_email,
+                'relationship': relationship or 'Friend',
+                'loan_status' : 'pending',   # pending | returned
+            })
+
+        # ── Insert into daily_expenses (auto-created by Atlas) ────────────
+        mongo.db.daily_expenses.insert_one(expense_doc)
+
+        # ── Update user's running totals (only for real expenses, not loans) ──
+        if not is_loan:
+            user = mongo.db.users.find_one({'name': username})
+            if user:
+                new_spent   = round(user.get('total_spent', 0.0) + amount, 2)
+                monthly_lim = user.get('monthly_limit', 0.0)
+                new_balance = round(monthly_lim - new_spent, 2)
+
+                mongo.db.users.update_one(
+                    {'name': username},
+                    {'$set': {
+                        'total_spent': new_spent,
+                        'balance'    : new_balance,
+                        'over_budget': new_balance < 0,
+                    }}
+                )
+
+                # ── Guardian threshold check (Task 6 placeholder) ─────────
+                if monthly_lim > 0:
+                    remaining_pct = (new_balance / monthly_lim) * 100
+                    alert_10 = user.get('alert_10_sent', False)
+                    alert_5  = user.get('alert_5_sent', False)
+
+                    if remaining_pct <= 0 and not user.get('over_budget', False):
+                        # TODO Task 6: send over-budget email every time
+                        pass
+                    elif remaining_pct <= 5 and not alert_5:
+                        # TODO Task 6: send 5% warning email once
+                        pass
+                    elif remaining_pct <= 10 and not alert_10:
+                        # TODO Task 6: send 10% caution email once
+                        pass
+
+        # ── Trigger coin animation on next home load ──────────────────────
+        session['play_coins'] = True
+
+        if is_loan:
+            flash(f'Loan of \u20b9{amount:,.2f} to {request.form.get("friend_name", "friend")} recorded! \U0001f91d', 'success')
+        else:
+            flash(f'\u20b9{amount:,.2f} tracked under {category}! Keep it up! \U0001f4b0', 'success')
+
+        return redirect(url_for('home'))
+
     except Exception as e:
-        print(f"[Expense] Error: {e}")
-        return f"Submission failed: {e}", 500
+        print(f'[Expense] Unexpected error: {e}')
+        flash('Something went wrong. Please try again.', 'error')
+        return redirect(url_for('home'))
 
 @app.route('/add_friend_loan', methods=['POST'])
 def add_friend_loan():
