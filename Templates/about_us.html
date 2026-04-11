@@ -68,7 +68,8 @@
         </div>
     </nav>
 
-    <div class="dynamic-bg" style="background-image: url('{{ url_for('static', filename='images/bg.svg') }}');"></div>
+    <style> .dynamic-bg { background-image: url("{{ url_for('static', filename='images/bg.svg') }}"); } </style>
+    <div class="dynamic-bg"></div>
 
     <div class="main-layout-wrapper">
         <div class="about-section">

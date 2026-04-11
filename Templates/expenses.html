@@ -80,7 +80,7 @@
 
         <div class="form-panel" id="panel-entry">
 
-            <form id="expense-form" action="/add_expense" method="POST" novalidate>
+            <form id="expense-form" action="/add_expense" method="POST" enctype="multipart/form-data" novalidate>
 
                 <!-- Row 1: Category + Amount -->
                 <div class="form-row-2">
@@ -118,6 +118,17 @@
                     <div class="form-field">
                         <label class="field-label" for="expense_date">Date</label>
                         <input type="date" id="expense_date" name="expense_date">
+                    </div>
+                </div>
+                
+                <!-- Receipt Upload block -->
+                <div class="form-row file-upload-row">
+                    <div class="file-upload-block">
+                        <input type="file" id="receipt" name="receipt" accept="image/*" class="file-input-hidden">
+                        <label for="receipt" class="file-upload-label" id="receipt-label">
+                            <span class="upload-icon">📸</span>
+                            <span class="upload-text">Attach Receipt Image (Optional)</span>
+                        </label>
                     </div>
                 </div>
 
@@ -165,7 +176,7 @@
 
                 <button type="submit" class="submit-btn" id="submit-btn">
                     <span id="btn-text">Record Entry</span>
-                    <span id="btn-loading" hidden>Processing...</span>
+                    <div class="btn-spinner" id="btn-spinner" style="display:none;"></div>
                 </button>
 
             </form>
@@ -201,7 +212,12 @@
                         </div>
                         <div class="exp-action-group">
                             <div class="exp-amount">&#8377;{{ '{:,.0f}'.format(exp.amount) }}</div>
-                            <button type="button" class="del-btn" onclick="openDeleteModal('{{ exp._id }}')">🗑️</button>
+                            <div class="exp-action-btns">
+                                {% if exp.receipt_url %}
+                                <button type="button" class="receipt-pill" onclick="openReceiptModal('{{ exp.receipt_url }}', '{{ exp.category }}', '{{ exp.expense_date.strftime('%b %d, %Y') if exp.expense_date else '' }}')" title="View Receipt">🧾</button>
+                                {% endif %}
+                                <button type="button" class="del-btn" onclick="openDeleteModal('{{ exp._id }}')">🗑️</button>
+                            </div>
                         </div>
                     </div>
                 {% endfor %}
@@ -222,6 +238,27 @@
                 <form id="delete-form" action="" method="POST" style="margin:0;">
                     <button type="submit" class="modal-btn btn-danger">Yes, Delete</button>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Receipt Viewer Modal -->
+    <div id="receipt-modal" class="modal-backdrop">
+        <div class="modal-card receipt-modal-card">
+            <div class="receipt-modal-header">
+                <div>
+                    <p class="receipt-modal-label">Receipt</p>
+                    <h2 class="modal-title" id="receipt-modal-title">Category</h2>
+                    <p class="receipt-modal-date" id="receipt-modal-date"></p>
+                </div>
+                <button class="receipt-close-btn" onclick="closeReceiptModal()">✕</button>
+            </div>
+            <div class="receipt-img-wrap">
+                <img id="receipt-modal-img" src="" alt="Receipt" class="receipt-img">
+            </div>
+            <div class="modal-actions" style="margin-top:16px;">
+                <button type="button" class="modal-btn btn-cancel" onclick="closeReceiptModal()">Close</button>
+                <a id="receipt-open-link" href="#" target="_blank" class="modal-btn btn-receipt-open">Open Full Size ↗</a>
             </div>
         </div>
     </div>
@@ -266,6 +303,53 @@
     const loanSection = document.getElementById('loan-section');
     const friendName  = document.getElementById('friend_name');
     const friendEmail = document.getElementById('friend_email');
+
+    const form = document.getElementById('expense-form');
+    const submitBtn = document.getElementById('submit-btn');
+    const btnText = document.getElementById('btn-text');
+    const btnSpinner = document.getElementById('btn-spinner');
+    
+    // Receipt UI logic
+    const receiptInput = document.getElementById('receipt');
+    const receiptLabel = document.getElementById('receipt-label');
+    const uploadText = receiptLabel.querySelector('.upload-text');
+    receiptInput.addEventListener('change', function(e) {
+        if(this.files && this.files.length > 0) {
+            uploadText.textContent = this.files[0].name;
+            receiptLabel.classList.add('has-file');
+        } else {
+            uploadText.textContent = "Attach Receipt Image (Optional)";
+            receiptLabel.classList.remove('has-file');
+        }
+    });
+
+    form.addEventListener('submit', (e) => {
+        let valid = true;
+        const cat = document.getElementById('category');
+        const amt = document.getElementById('amount');
+
+        [cat, amt].forEach(el => el.classList.remove('error'));
+
+        if (!cat.value) { valid = false; cat.classList.add('error'); }
+        if (!amt.value || amt.value <= 0) { valid = false; amt.classList.add('error'); }
+
+        if (document.getElementById('is_loan').checked) {
+            const fname = document.getElementById('friend_name');
+            const femail = document.getElementById('friend_email');
+            [fname, femail].forEach(el => el.classList.remove('error'));
+            if (!fname.value) { valid = false; fname.classList.add('error'); }
+            if (!femail.value || !femail.value.includes('@')) { valid = false; femail.classList.add('error'); }
+        }
+
+        if (!valid) {
+            e.preventDefault();
+        } else {
+            submitBtn.classList.add('loading');
+            btnText.textContent = "Uploading...";
+            btnSpinner.style.display = "block";
+            submitBtn.style.pointerEvents = "none";
+        }
+    });
 
     loanCheck.addEventListener('change', function() {
         if (this.checked) {
@@ -480,6 +564,48 @@
             });
         }, 5000);
     });
+    // =========================================================
+    // MODAL & DELETE LOGIC
+    // =========================================================
+    const deleteModalEl = document.getElementById('delete-modal');
+    const deleteFormEl  = document.getElementById('delete-form');
+
+    function openDeleteModal(expenseId) {
+        deleteFormEl.action = '/delete_expense/' + expenseId;
+        deleteModalEl.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+    function closeDeleteModal() {
+        deleteModalEl.classList.remove('active');
+        setTimeout(() => deleteFormEl.action = '', 300);
+        document.body.style.overflow = '';
+    }
+    deleteModalEl.addEventListener('click', function(e) {
+        if (e.target === this) closeDeleteModal();
+    });
+
+    // =========================================================
+    // RECEIPT VIEWER MODAL
+    // =========================================================
+    const receiptModalEl = document.getElementById('receipt-modal');
+
+    function openReceiptModal(url, category, date) {
+        document.getElementById('receipt-modal-img').src = url;
+        document.getElementById('receipt-modal-title').textContent = category;
+        document.getElementById('receipt-modal-date').textContent = date;
+        document.getElementById('receipt-open-link').href = url;
+        receiptModalEl.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+    function closeReceiptModal() {
+        receiptModalEl.classList.remove('active');
+        document.body.style.overflow = '';
+        setTimeout(() => document.getElementById('receipt-modal-img').src = '', 300);
+    }
+    receiptModalEl.addEventListener('click', function(e) {
+        if (e.target === this) closeReceiptModal();
+    });
+
     </script>
 </body>
 </html>

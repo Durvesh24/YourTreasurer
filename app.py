@@ -6,11 +6,22 @@ from pymongo import MongoClient
 from bson.objectid import ObjectId
 from datetime import datetime
 from dotenv import load_dotenv
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
 
-load_dotenv()
+load_dotenv(override=True)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "campuscoin_tracker_2026")
+
+# ── Cloudinary Configuration ──────────────────────────────
+cloudinary.config(
+    cloud_name = os.environ.get('CLOUDINARY_NAME'),
+    api_key    = os.environ.get('CLOUDINARY_KEY'),
+    api_secret = os.environ.get('CLOUDINARY_SECRET'),
+    secure     = True
+)
 
 # ── Jinja2 filter: Indian rupee format ───────────────────────
 @app.template_filter('format_inr')
@@ -405,6 +416,20 @@ def add_expense():
 
             doc.update({'friend_name': friend_name, 'friend_email': friend_email,
                         'relationship': relationship, 'loan_status': 'pending'})
+
+        # Cloudinary receipt upload (Task 5)
+        receipt_file = request.files.get('receipt')
+        if receipt_file and receipt_file.filename:
+            try:
+                upload_result = cloudinary.uploader.upload(
+                    receipt_file,
+                    folder="yourtreasurer_receipts",
+                    resource_type="auto"
+                )
+                doc['receipt_url'] = upload_result.get('secure_url')
+            except Exception as e:
+                print(f"[Cloudinary] Upload Error: {e}")
+                flash(f'Cloudinary Error: {str(e)}', 'error')
 
         mongo.db.daily_expenses.insert_one(doc)
 
