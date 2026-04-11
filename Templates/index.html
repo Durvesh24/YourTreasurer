@@ -3,22 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YourTreasurer | Home</title>
-    <meta name="description" content="Track daily expenses, log loans, and manage your campus budget in real time.">
+    <title>YourTreasurer — Smart Campus Budget Manager</title>
+    <meta name="description" content="Track daily expenses, manage loans, and never run out of money before month-end.">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/Style.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@700;800;900&display=swap" rel="stylesheet">
 </head>
 <body>
 
-    <!-- ── Brand Logo ── -->
+    <!-- Brand Logo -->
     <div class="brand-logo-top">
-        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="YourTreasurer Logo">
+        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="YourTreasurer">
     </div>
 
-    <!-- ── Menu Button ── -->
+    <!-- Nav Menu -->
     <button class="menu-trigger" id="menu-btn"><span>&#9776; Menu</span></button>
-
     <div class="menu-backdrop" id="menu-backdrop"></div>
 
     <nav id="side-nav" class="side-nav">
@@ -31,431 +30,94 @@
             <a href="/interval_spend" data-bg="{{ url_for('static', filename='images/interval.jpg') }}">Interval Spend</a>
             <a href="/about_us" data-bg="{{ url_for('static', filename='images/aboutus.png') }}">About Us</a>
             {% if session.get('username') %}
-            <a href="/logout" data-bg="{{ url_for('static', filename='images/bg.svg') }}" style="color:#ff8080;">&#x238b; Logout</a>
+            <a href="/logout" class="nav-logout">Logout</a>
             {% endif %}
         </div>
     </nav>
 
-    <!-- ── Dynamic Background ── -->
     <div id="dynamic-bg" class="dynamic-bg" style="background-image: url('{{ url_for('static', filename='images/bg.svg') }}');"></div>
     <div id="hover-bg" class="dynamic-bg hover-layer"></div>
 
-    <!-- ── Coin Rain Overlay ── -->
-    <div class="coin-rain" id="coin-rain" aria-hidden="true"></div>
-
-    <!-- ── Flash Messages ── -->
+    <!-- Flash Messages -->
     {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-        <div class="flash-container-home">
-            {% for category, message in messages %}
-            <div class="flash-home flash-{{ category }}">{{ message }}</div>
-            {% endfor %}
-        </div>
-        {% endif %}
+    {% if messages %}
+    <div class="flash-bar">
+        {% for cat, msg in messages %}
+        <div class="flash-item flash-{{ cat }}">{{ msg }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
     {% endwith %}
 
-    <!-- ═══════════════════════════════════════════
-         MAIN DASHBOARD
-    ═══════════════════════════════════════════ -->
-    <div class="dashboard-wrapper">
+    <!-- HERO SECTION -->
+    <main class="hero">
+        <div class="hero-content">
+            {% if session.get('username') %}
+            <p class="hero-greeting">Welcome back, {{ session['username'] }}</p>
+            {% endif %}
+            <h1 class="hero-title">
+                Your Campus<br>
+                <span class="hero-accent">Budget Vault</span>
+            </h1>
+            <p class="hero-sub">
+                Track every rupee. Log loans to friends. Never run out of
+                money before the month ends.
+            </p>
 
-        <!-- ── Page Header ── -->
-        <div class="dash-header">
-            <div>
-                <h1 class="dash-title">
-                    {% if user %}
-                        Hey, {{ session.get('username', 'Treasurer') }}! &#128075;
-                    {% else %}
-                        YourTreasurer
-                    {% endif %}
-                </h1>
-                <p class="dash-sub">
-                    {% if user %}
-                        {{ user.get('monthly_limit') | default(0) | int | format_inr }} budget this month &bull;
-                        <span class="{% if user.get('over_budget') %}text-red{% endif %}">
-                            &#8377;{{ '{:,.2f}'.format(user.get('balance', user.get('monthly_limit', 0))) }} remaining
-                        </span>
-                    {% else %}
-                        Smart Spending for Smart Ones
-                    {% endif %}
-                </p>
-            </div>
-            <a href="/my_expenses" class="view-all-btn">View All Expenses &#8594;</a>
-        </div>
-
-        <!-- ── Two-column grid ── -->
-        <div class="dash-grid">
-
-            <!-- ══ LEFT: Budget Status Card ════════════════════════════ -->
-            <div class="budget-card glass-card">
-                <div class="card-label">&#128200; Monthly Budget</div>
-
-                {% if user %}
-                {% set limit   = user.get('monthly_limit', 1) %}
-                {% set spent   = user.get('total_spent', 0) %}
-                {% set balance = user.get('balance', limit - spent) %}
-                {% set pct     = [(spent / limit * 100), 100] | min | round(1) %}
-
-                <!-- Doughnut mini -->
-                <div class="budget-doughnut-wrap">
-                    <svg class="budget-doughnut" viewBox="0 0 120 120">
-                        <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="14"/>
-                        <circle cx="60" cy="60" r="50" fill="none"
-                            stroke="{% if pct >= 100 %}#e74c3c{% elif pct >= 90 %}#e67e22{% elif pct >= 70 %}#f1c40f{% else %}#2ecc71{% endif %}"
-                            stroke-width="14"
-                            stroke-dasharray="{{ (pct / 100 * 314.16) | round(2) }} 314.16"
-                            stroke-dashoffset="78.54"
-                            stroke-linecap="round"/>
-                        <text x="60" y="55" text-anchor="middle" fill="#BDE8F5" font-size="18" font-weight="700" font-family="Poppins">{{ pct | int }}%</text>
-                        <text x="60" y="72" text-anchor="middle" fill="rgba(189,232,245,0.55)" font-size="9" font-family="Poppins">USED</text>
-                    </svg>
-                </div>
-
-                <!-- Stats row -->
-                <div class="budget-stats">
-                    <div class="stat-pill">
-                        <span class="stat-lbl">Budget</span>
-                        <span class="stat-val">&#8377;{{ '{:,.0f}'.format(limit) }}</span>
-                    </div>
-                    <div class="stat-pill">
-                        <span class="stat-lbl">Spent</span>
-                        <span class="stat-val text-yellow">&#8377;{{ '{:,.2f}'.format(spent) }}</span>
-                    </div>
-                    <div class="stat-pill">
-                        <span class="stat-lbl">Left</span>
-                        <span class="stat-val {% if balance < 0 %}text-red{% else %}text-green{% endif %}">&#8377;{{ '{:,.2f}'.format(balance) }}</span>
-                    </div>
-                </div>
-
-                <!-- Progress bar -->
-                <div class="prog-track">
-                    <div class="prog-bar {% if pct >= 100 %}prog-red{% elif pct >= 90 %}prog-orange{% elif pct >= 70 %}prog-yellow{% else %}prog-green{% endif %}"
-                         style="width: {{ pct }}%"></div>
-                </div>
-                <p class="prog-caption">
-                    {% if pct >= 100 %}&#9888; Over budget! Time to pause spending.
-                    {% elif pct >= 90 %}&#128226; Only 10% left — be cautious!
-                    {% elif pct >= 70 %}&#128161; 30% remaining — watch your spend.
-                    {% else %}&#127881; You're on track this month!
-                    {% endif %}
-                </p>
-
-                <!-- Today summary -->
-                <div class="today-strip">
-                    <span>Today's spend</span>
-                    <span class="today-amt">&#8377;{{ '{:,.2f}'.format(today_total) }}</span>
-                </div>
+            <div class="hero-actions">
+                {% if session.get('username') %}
+                <a href="/my_expenses" class="btn-primary">Go to My Expenses</a>
+                <a href="/analysis" class="btn-ghost">View Analysis</a>
                 {% else %}
-                <p class="no-user-msg">Set up your budget to see stats here.</p>
+                <a href="/my_profile" class="btn-primary">Get Started</a>
+                <a href="/about_us" class="btn-ghost">Learn More</a>
                 {% endif %}
             </div>
 
-            <!-- ══ RIGHT: Expense Entry Form ═══════════════════════════ -->
-            <div class="form-card glass-card">
-                <div class="card-label">&#10133; Track Expense</div>
-
-                <form id="expense-form" action="/add_expense" method="POST" novalidate>
-
-                    <!-- Row 1: Category + Amount -->
-                    <div class="form-row">
-                        <div class="field-group">
-                            <label for="category">Category</label>
-                            <div class="select-wrapper">
-                                <select id="category" name="category" required>
-                                    <option value="" disabled selected>Select category</option>
-                                    {% for cat in categories %}
-                                    <option value="{{ cat }}">{{ cat }}</option>
-                                    {% endfor %}
-                                </select>
-                                <span class="select-arrow">&#9660;</span>
-                            </div>
-                        </div>
-
-                        <div class="field-group">
-                            <label for="amount">Amount (&#8377;)</label>
-                            <div class="input-wrap">
-                                <span class="inp-prefix">&#8377;</span>
-                                <input type="number" id="amount" name="amount"
-                                       placeholder="0.00" min="1" max="100000"
-                                       step="0.01" required>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Row 2: Description + Date -->
-                    <div class="form-row">
-                        <div class="field-group flex2">
-                            <label for="description">Description (optional)</label>
-                            <input type="text" id="description" name="description"
-                                   placeholder="What was this expense for?" maxlength="120">
-                        </div>
-
-                        <div class="field-group">
-                            <label for="expense_date">Date</label>
-                            <input type="date" id="expense_date" name="expense_date">
-                        </div>
-                    </div>
-
-                    <!-- Loan Toggle -->
-                    <div class="loan-toggle-row">
-                        <label class="toggle-label" for="is_loan">
-                            <input type="checkbox" id="is_loan" name="is_loan">
-                            <span class="toggle-track">
-                                <span class="toggle-thumb"></span>
-                            </span>
-                            <span class="toggle-text">&#129309; Is this a Loan to a Friend?</span>
-                        </label>
-                    </div>
-
-                    <!-- Loan Fields (hidden by default) -->
-                    <div class="loan-fields" id="loan-fields">
-                        <div class="loan-banner">&#128274; Loan Details</div>
-                        <div class="form-row">
-                            <div class="field-group">
-                                <label for="friend_name">Friend's Name</label>
-                                <input type="text" id="friend_name" name="friend_name"
-                                       placeholder="Enter friend's name" maxlength="40">
-                            </div>
-                            <div class="field-group">
-                                <label for="relationship">Relationship</label>
-                                <div class="select-wrapper">
-                                    <select id="relationship" name="relationship">
-                                        <option value="Friend">Friend</option>
-                                        <option value="Roommate">Roommate</option>
-                                        <option value="Classmate">Classmate</option>
-                                        <option value="Family">Family</option>
-                                        <option value="Other">Other</option>
-                                    </select>
-                                    <span class="select-arrow">&#9660;</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="field-group">
-                            <label for="friend_email">Friend's Email</label>
-                            <input type="email" id="friend_email" name="friend_email"
-                                   placeholder="friend@example.com">
-                        </div>
-                    </div>
-
-                    <!-- Submit -->
-                    <button type="submit" class="track-btn" id="track-btn">
-                        <span class="btn-inner">
-                            <span id="btn-label">&#128176; Track Now</span>
-                            <span class="btn-spinner" id="btn-spinner" hidden>&#9200; Processing...</span>
-                        </span>
-                    </button>
-
-                </form>
-            </div>
-
-        </div><!-- /.dash-grid -->
-
-        <!-- ── Recent Today's Expenses ── -->
-        {% if today_expenses %}
-        <div class="recent-section">
-            <h2 class="section-title">&#128336; Today's Entries</h2>
-            <div class="recent-grid">
-                {% for exp in today_expenses %}
-                <div class="recent-card">
-                    <div class="rc-left">
-                        <span class="rc-icon">
-                            {% if exp.is_loan %}&#129309;
-                            {% elif exp.category == 'Educational' %}&#128218;
-                            {% elif exp.category == 'Junk Food' %}&#127839;
-                            {% elif exp.category == 'Healthy Food' %}&#129367;
-                            {% elif exp.category == 'Travelling' %}&#128652;
-                            {% elif exp.category == 'Hostel Rent' %}&#127968;
-                            {% elif exp.category == 'Lifestyle' %}&#128084;
-                            {% else %}&#128176;{% endif %}
-                        </span>
-                        <div>
-                            <p class="rc-cat">{{ 'Loan to ' + exp.friend_name if exp.is_loan else exp.category }}</p>
-                            <p class="rc-desc">{{ exp.description }}</p>
-                        </div>
-                    </div>
-                    <div class="rc-right">
-                        <span class="rc-amt {% if exp.is_loan %}amt-loan{% endif %}">
-                            {% if exp.is_loan %}+{% endif %}&#8377;{{ '{:,.2f}'.format(exp.amount) }}
-                        </span>
-                        <span class="rc-badge {% if exp.is_loan %}badge-loan{% endif %}">
-                            {{ 'Loan' if exp.is_loan else exp.category }}
-                        </span>
-                    </div>
-                </div>
-                {% endfor %}
+            <!-- Feature Pills -->
+            <div class="feature-pills">
+                <span class="pill">Daily Expense Tracking</span>
+                <span class="pill">Friend Loan Manager</span>
+                <span class="pill">Budget Alerts</span>
+                <span class="pill">Spending Analysis</span>
             </div>
         </div>
-        {% endif %}
+    </main>
 
-    </div><!-- /.dashboard-wrapper -->
-
-    <footer class="common-footer">
-        YourTreasurer &copy; 2026 | Helping Hand
-    </footer>
+    <footer class="common-footer">YourTreasurer &copy; 2026 | Helping Hand</footer>
 
     <script>
-    // ════════════════════════════════════════════
-    // NAV MENU
-    // ════════════════════════════════════════════
     const menuBtn  = document.getElementById('menu-btn');
     const closeBtn = document.getElementById('close-btn');
     const sideNav  = document.getElementById('side-nav');
     const backdrop = document.getElementById('menu-backdrop');
-    const mainBg   = document.getElementById('dynamic-bg');
     const hoverBg  = document.getElementById('hover-bg');
-    const navLinks = document.querySelectorAll('.nav-links a');
 
     function toggleMenu() {
-        sideNav.classList.toggle('open');
+        const open = sideNav.classList.toggle('open');
         backdrop.classList.toggle('active');
-        document.body.style.position = sideNav.classList.contains('open') ? 'fixed' : '';
-        document.body.style.width    = sideNav.classList.contains('open') ? '100%' : '';
-        if (!sideNav.classList.contains('open')) hoverBg.style.opacity = '0';
+        document.body.style.overflow = open ? 'hidden' : '';
+        if (!open) hoverBg.style.opacity = '0';
     }
     menuBtn.addEventListener('click', toggleMenu);
     closeBtn.addEventListener('click', toggleMenu);
     backdrop.addEventListener('click', toggleMenu);
 
-    navLinks.forEach(link => {
+    document.querySelectorAll('.nav-links a').forEach(link => {
         link.addEventListener('mouseenter', () => {
-            hoverBg.style.backgroundImage = `url(${link.getAttribute('data-bg')})`;
-            hoverBg.style.opacity = '1';
+            const bg = link.dataset.bg;
+            if (bg) { hoverBg.style.backgroundImage = `url(${bg})`; hoverBg.style.opacity = '1'; }
         });
-        link.addEventListener('mouseleave', () => { hoverBg.style.opacity = '0'; });
+        link.addEventListener('mouseleave', () => hoverBg.style.opacity = '0');
     });
 
-    // ════════════════════════════════════════════
-    // DEFAULT DATE = TODAY
-    // ════════════════════════════════════════════
-    (function() {
-        const dateInput = document.getElementById('expense_date');
-        if (dateInput) {
-            // Use local date (IST)
-            const now = new Date();
-            const yyyy = now.getFullYear();
-            const mm   = String(now.getMonth() + 1).padStart(2, '0');
-            const dd   = String(now.getDate()).padStart(2, '0');
-            dateInput.value = `${yyyy}-${mm}-${dd}`;
-            dateInput.max   = `${yyyy}-${mm}-${dd}`; // can't log future expenses
-        }
-    })();
-
-    // ════════════════════════════════════════════
-    // LOAN TOGGLE — reveal / hide extra fields
-    // ════════════════════════════════════════════
-    const loanCheck  = document.getElementById('is_loan');
-    const loanFields = document.getElementById('loan-fields');
-    const friendName = document.getElementById('friend_name');
-    const friendEmail= document.getElementById('friend_email');
-
-    loanCheck.addEventListener('change', function () {
-        if (this.checked) {
-            loanFields.classList.add('visible');
-            friendName.required  = true;
-            friendEmail.required = true;
-        } else {
-            loanFields.classList.remove('visible');
-            friendName.required  = false;
-            friendEmail.required = false;
-        }
-    });
-
-    // ════════════════════════════════════════════
-    // FORM CLIENT-SIDE MINI VALIDATION
-    // ════════════════════════════════════════════
-    document.getElementById('expense-form').addEventListener('submit', function(e) {
-        const cat    = document.getElementById('category').value;
-        const amt    = parseFloat(document.getElementById('amount').value);
-        const isLoan = document.getElementById('is_loan').checked;
-
-        if (!cat) { alert('Please select a category.'); e.preventDefault(); return; }
-        if (!amt || amt <= 0) { alert('Please enter a valid amount greater than 0.'); e.preventDefault(); return; }
-        if (amt > 100000)     { alert('Amount cannot exceed ₹1,00,000.'); e.preventDefault(); return; }
-        if (isLoan) {
-            const fn = document.getElementById('friend_name').value.trim();
-            const fe = document.getElementById('friend_email').value.trim();
-            if (!fn) { alert("Please enter your friend's name."); e.preventDefault(); return; }
-            if (!fe || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fe)) {
-                alert("Please enter a valid email for your friend.");
-                e.preventDefault(); return;
-            }
-        }
-
-        // Show loading state
-        const label   = document.getElementById('btn-label');
-        const spinner = document.getElementById('btn-spinner');
-        label.hidden   = true;
-        spinner.hidden = false;
-        document.getElementById('track-btn').disabled = true;
-    });
-
-    // ════════════════════════════════════════════
-    // COIN CLINK SOUND (Web Audio API)
-    // ════════════════════════════════════════════
-    function playCoinClink() {
-        try {
-            const ctx  = new (window.AudioContext || window.webkitAudioContext)();
-            const t    = ctx.currentTime;
-            // Metallic clink: two fast high-pitched tones
-            [1047, 1319, 1047].forEach((freq, i) => {
-                const osc  = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.connect(gain); gain.connect(ctx.destination);
-                osc.type = 'triangle';
-                osc.frequency.setValueAtTime(freq, t + i * 0.07);
-                gain.gain.setValueAtTime(0.25, t + i * 0.07);
-                gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.07 + 0.18);
-                osc.start(t + i * 0.07);
-                osc.stop(t + i * 0.07 + 0.2);
-            });
-        } catch(e) {}
-    }
-
-    // ════════════════════════════════════════════
-    // COIN RAIN ANIMATION
-    // ════════════════════════════════════════════
-    function launchCoinRain() {
-        const rain = document.getElementById('coin-rain');
-        rain.innerHTML = '';
-        rain.style.display = 'block';
-        const coins = ['💰','🪙','💵','💴','💳','🏅'];
-        for (let i = 0; i < 50; i++) {
-            const coin = document.createElement('span');
-            coin.className  = 'coin';
-            coin.textContent = coins[Math.floor(Math.random() * coins.length)];
-            coin.style.left  = Math.random() * 100 + 'vw';
-            coin.style.animationDelay    = (Math.random() * 1.5) + 's';
-            coin.style.animationDuration = (1.5 + Math.random() * 1.5) + 's';
-            coin.style.fontSize = (1.2 + Math.random() * 1.2) + 'rem';
-            rain.appendChild(coin);
-        }
-        setTimeout(() => {
-            rain.style.display = 'none';
-            rain.innerHTML = '';
-        }, 3500);
-    }
-
-    // ════════════════════════════════════════════
-    // TRIGGER ON SUCCESS (flag from Flask session)
-    // ════════════════════════════════════════════
-    window.addEventListener('DOMContentLoaded', () => {
-        const playCoins = {{ 'true' if play_coins else 'false' }};
-        if (playCoins) {
-            playCoinClink();
-            launchCoinRain();
-        }
-
-        // Auto-dismiss flash messages after 5 s
-        setTimeout(() => {
-            document.querySelectorAll('.flash-home').forEach(el => {
-                el.style.transition = 'opacity 0.4s, transform 0.4s';
-                el.style.opacity = '0';
-                el.style.transform = 'translateY(-8px)';
-                setTimeout(() => el.remove(), 400);
-            });
-        }, 5000);
-    });
+    setTimeout(() => {
+        document.querySelectorAll('.flash-item').forEach(el => {
+            el.style.transition = 'opacity 0.4s';
+            el.style.opacity = '0';
+            setTimeout(() => el.remove(), 400);
+        });
+    }, 4000);
     </script>
-
 </body>
 </html>

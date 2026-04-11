@@ -1,0 +1,161 @@
+/* ================================================================
+   HOME.CSS — Landing Page Hero
+   ================================================================ */
+
+body { overflow: hidden !important; }
+
+/* ── Flash bar ──────────────────────────────────────────────── */
+.flash-bar {
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+    z-index: 9999; display: flex; flex-direction: column; gap: 8px;
+    width: min(500px, 92vw); pointer-events: none;
+}
+.flash-item {
+    padding: 13px 22px; border-radius: 12px;
+    font-size: .84rem; font-weight: 500; text-align: center;
+    pointer-events: all; backdrop-filter: blur(16px);
+    animation: flashIn .4s cubic-bezier(.34,1.56,.64,1) both;
+    border: 1px solid transparent;
+}
+.flash-success { background:rgba(20,83,45,.9); color:#86efac; border-color:rgba(134,239,172,.2); }
+.flash-error   { background:rgba(127,29,29,.9); color:#fca5a5; border-color:rgba(252,165,165,.2); }
+.flash-warning { background:rgba(120,53,15,.9); color:#fcd34d; border-color:rgba(252,211,77,.2);  }
+@keyframes flashIn {
+    from { opacity:0; transform:translateY(-12px) scale(.96); }
+    to   { opacity:1; transform:translateY(0) scale(1); }
+}
+
+/* ── Hero container ─────────────────────────────────────────── */
+.hero {
+    position: fixed; inset: 0; z-index: 5;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0 28px;
+}
+
+.hero-content {
+    text-align: center; max-width: 720px; width: 100%;
+    animation: heroIn .8s cubic-bezier(.34,1.56,.64,1) both;
+}
+@keyframes heroIn {
+    from { opacity:0; transform:translateY(36px) scale(.97); }
+    to   { opacity:1; transform:translateY(0) scale(1); }
+}
+
+/* Greeting line */
+.hero-greeting {
+    font-size: .78rem; font-weight: 600; letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: transparent;
+    background: linear-gradient(90deg, #38bdf8, #818cf8);
+    -webkit-background-clip: text; background-clip: text;
+    margin-bottom: 14px; display: block;
+}
+
+/* Main headline */
+.hero-title {
+    font-family: 'Poppins', sans-serif;
+    font-size: clamp(2.8rem, 8.5vw, 5.2rem);
+    font-weight: 900; line-height: 1.06;
+    color: #f0f9ff; letter-spacing: -2px;
+    margin: 0 0 22px;
+}
+
+/* Gradient accent word */
+.hero-accent {
+    background: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #34d399 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+    display: inline-block;
+    animation: accentPulse 4s ease-in-out infinite;
+}
+@keyframes accentPulse {
+    0%,100% { filter: brightness(1); }
+    50%     { filter: brightness(1.15); }
+}
+
+/* Sub-tagline */
+.hero-sub {
+    font-size: clamp(.92rem, 2.2vw, 1.08rem);
+    color: rgba(186,230,253,.5); line-height: 1.8;
+    max-width: 480px; margin: 0 auto 40px;
+    font-weight: 400;
+}
+
+/* ── CTA Buttons ────────────────────────────────────────────── */
+.hero-actions {
+    display: flex; gap: 14px; justify-content: center;
+    flex-wrap: wrap; margin-bottom: 44px;
+}
+
+.btn-primary {
+    padding: 14px 40px;
+    background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 60%, #60a5fa 100%);
+    color: #fff; border-radius: 50px;
+    font-family: 'Poppins', sans-serif;
+    font-size: .95rem; font-weight: 700; letter-spacing: .3px;
+    text-decoration: none;
+    box-shadow: 0 10px 32px rgba(59,130,246,.45),
+                inset 0 1px 0 rgba(255,255,255,.2);
+    transition: transform .25s var(--spring), box-shadow .25s ease;
+    position: relative; overflow: hidden;
+}
+.btn-primary::after {
+    content: ''; position: absolute; top:0; left:-100%;
+    width: 55%; height: 100%;
+    background: linear-gradient(90deg,transparent,rgba(255,255,255,.15),transparent);
+    transition: left .5s;
+}
+.btn-primary:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 18px 44px rgba(59,130,246,.55), inset 0 1px 0 rgba(255,255,255,.2);
+}
+.btn-primary:hover::after { left: 140%; }
+.btn-primary:active { transform: scale(.97); }
+
+.btn-ghost {
+    padding: 14px 34px;
+    background: rgba(255,255,255,.06);
+    color: rgba(186,230,253,.8);
+    border: 1px solid rgba(186,230,253,.18);
+    border-radius: 50px;
+    font-family: 'Poppins', sans-serif;
+    font-size: .95rem; font-weight: 600; letter-spacing: .3px;
+    text-decoration: none;
+    backdrop-filter: blur(10px);
+    transition: var(--transition);
+}
+.btn-ghost:hover {
+    background: rgba(186,230,253,.1);
+    border-color: rgba(186,230,253,.35);
+    color: #f0f9ff; transform: translateY(-2px);
+}
+
+/* ── Feature pills ──────────────────────────────────────────── */
+.feature-pills {
+    display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;
+}
+.pill {
+    padding: 7px 18px;
+    background: rgba(56,189,248,.07);
+    border: 1px solid rgba(56,189,248,.18);
+    border-radius: 50px;
+    font-size: .74rem; font-weight: 600; letter-spacing: .4px;
+    color: rgba(186,230,253,.55);
+    transition: var(--transition);
+}
+.pill:hover {
+    background: rgba(56,189,248,.14);
+    border-color: rgba(56,189,248,.35);
+    color: #bae6fd;
+    transform: translateY(-2px);
+}
+
+/* Nav overrides for home */
+.nav-logout { color: rgba(252,165,165,.75) !important; }
+.nav-logout:hover { color: #fca5a5 !important; }
+
+@media (max-width: 480px) {
+    .hero-actions { flex-direction: column; align-items: center; }
+    .btn-primary, .btn-ghost { width: 100%; text-align: center; }
+    .hero-title { letter-spacing: -1px; }
+}
