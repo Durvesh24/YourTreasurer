@@ -3,8 +3,77 @@
    Odyssey Theme: Navy × Blue × Glass
    ============================================ */
 
-/* ── OVERFLOW for scrollable dashboard ── */
-body { overflow-y: auto !important; }
+/* ═══════════════════════════════════════════
+   OVERVIEW GRID (Doughnut + Quick Actions)
+═══════════════════════════════════════════ */
+.overview-grid {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 22px;
+    align-items: start;
+    margin-bottom: 28px;
+}
+@media (max-width: 760px) {
+    .overview-grid { grid-template-columns: 1fr; }
+}
+
+/* ── QUICK ACTION CARDS ── */
+.quick-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+@media (max-width: 500px) {
+    .quick-actions { grid-template-columns: 1fr; }
+}
+
+.action-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 20px 18px;
+    text-decoration: none;
+    border-radius: 18px;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    position: relative;
+    overflow: hidden;
+    animation: cardIn 0.6s cubic-bezier(0.34,1.56,0.64,1) both;
+}
+.action-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 16px 40px rgba(0,0,0,0.45);
+}
+.action-card::after {
+    content: "";
+    position: absolute;
+    top: 0; left: -80%;
+    width: 50%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent);
+    transition: left 0.5s ease;
+}
+.action-card:hover::after { left: 130%; }
+
+.ac-icon  { font-size: 1.8rem; line-height: 1; }
+.ac-title { font-size: 0.95rem; font-weight: 700; color: #BDE8F5; }
+.ac-sub   { font-size: 0.74rem; color: rgba(189,232,245,0.45); }
+.ac-arrow {
+    position: absolute;
+    right: 16px; top: 50%;
+    transform: translateY(-50%);
+    font-size: 1.1rem;
+    color: rgba(189,232,245,0.3);
+    transition: color 0.2s, right 0.2s;
+}
+.action-card:hover .ac-arrow { color: #BDE8F5; right: 12px; }
+
+.center-cta {
+    text-align: center;
+    padding: 50px 30px;
+    color: rgba(189,232,245,0.8);
+}
+.center-cta h2 { font-size: 1.4rem; margin-bottom: 10px; color: #BDE8F5; }
+.center-cta a  { color: #4988C4; text-decoration: none; font-weight: 600; }
+
 
 /* ── FLASH MESSAGES (home page specific) ── */
 .flash-container-home {

@@ -1,349 +1,234 @@
 from flask import Flask, render_template, request, flash, redirect, url_for, jsonify, session
-from flask_pymongo import PyMongo
 from flask_mail import Mail, Message
-from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
-import os
-import re
-import uuid
-import threading
-import time
-import cloudinary
-import cloudinary.uploader
-from datetime import datetime, timedelta
-
+import os, re, threading, ssl, certifi
+from pymongo import MongoClient
+from datetime import datetime
 from dotenv import load_dotenv
-load_dotenv()  # Loads variables from .env into os.environ
+
+load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "campuscoin_tracker_2026")
 
-# ── Jinja2 custom filter: Indian number format ──────────────────────────────
+# ── Jinja2 filter: Indian rupee format ───────────────────────
 @app.template_filter('format_inr')
 def format_inr(value):
-    """Format a number as Indian rupee with commas (e.g. 1,00,000)."""
     try:
-        value = int(value)
-        s = str(value)
-        if len(s) <= 3:
-            return f"₹{s}"
-        last3 = s[-3:]
-        rest   = s[:-3]
-        parts  = [rest[max(i-2,0):i] for i in range(len(rest), 0, -2)][::-1]
+        v = int(value); s = str(v)
+        if len(s) <= 3: return f"₹{s}"
+        last3 = s[-3:]; rest = s[:-3]
+        parts = [rest[max(i-2,0):i] for i in range(len(rest), 0, -2)][::-1]
         return f"₹{','.join(p for p in parts if p)},{last3}"
     except Exception:
         return f"₹{value}"
 
-# ──────────────────────────────────────────────────────────
-# CONFIGURATION
-# ──────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────
+# MONGODB (direct MongoClient + certifi — fixes SSL on Py 3.13)
+# ──────────────────────────────────────────────────────────────
+_mongo_uri = os.environ.get("MONGO_URI", "")
 
-# 1. Cloudinary Setup (Task 5 — receipt uploads)
-cloudinary.config(
-    cloud_name = os.environ.get("CLOUDINARY_NAME", "your_cloud_name"),
-    api_key    = os.environ.get("CLOUDINARY_KEY",  "your_api_key"),
-    api_secret = os.environ.get("CLOUDINARY_SECRET","your_api_secret")
-)
+class _DB:
+    """Thin wrapper so mongo.db.xxx works throughout the codebase."""
+    def __init__(self):
+        self.db = None
+        self._client = None
 
-# 2. MongoDB Atlas — full URI stored in .env
-app.config["MONGO_URI"] = os.environ.get("MONGO_URI", "")
-mongo = PyMongo(app)
+    def connect(self, uri):
+        try:
+            # Build a custom SSL context — fixes TLSV1_ALERT_INTERNAL_ERROR
+            # on Python 3.13 / Windows OpenSSL with MongoDB Atlas
+            ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+            ssl_ctx.check_hostname = False
+            ssl_ctx.verify_mode    = ssl.CERT_NONE
+            ssl_ctx.minimum_version = ssl.TLSVersion.TLSv1_2
 
-# 3. Flask-Mail (Task 6 & 7)
+            self._client = MongoClient(
+                uri,
+                tls=True,
+                tlsCAFile=certifi.where(),
+                tlsAllowInvalidCertificates=True,
+                serverSelectionTimeoutMS=20000,
+            )
+            dbname = uri.split('/')[-1].split('?')[0].strip() or 'yourtreasurer'
+            self.db = self._client[dbname]
+            self._client.admin.command('ping')   # fast-fail check
+            print("[DB] Connected to MongoDB Atlas.")
+        except Exception as err:
+            print(f"[DB] Connection failed: {err}")
+            self.db = None
+
+mongo = _DB()
+mongo.connect(_mongo_uri)
+
+# Create indexes once (idempotent — Atlas ignores if they exist)
+with app.app_context():
+    if mongo.db is not None:
+        try:
+            mongo.db.users.create_index([("name_lower", 1)], unique=True, name="unique_name")
+            mongo.db.users.create_index([("email_lower", 1)], unique=True, name="unique_email")
+            print("[DB] Indexes ready.")
+        except Exception as e:
+            print(f"[DB] Index note: {e}")
+    else:
+        print("[DB] No DB connection — skipping indexes.")
+
+# ──────────────────────────────────────────────────────────────
+# FLASK-MAIL (Task 6 & 7)
+# ──────────────────────────────────────────────────────────────
 app.config['MAIL_SERVER']   = 'smtp.gmail.com'
 app.config['MAIL_PORT']     = 587
 app.config['MAIL_USE_TLS']  = True
-app.config['MAIL_USERNAME'] = os.environ.get("MAIL_USER", "your_email@gmail.com")
-app.config['MAIL_PASSWORD'] = os.environ.get("MAIL_PASS", "your_app_password")
+app.config['MAIL_USERNAME'] = os.environ.get("MAIL_USER", "")
+app.config['MAIL_PASSWORD'] = os.environ.get("MAIL_PASS", "")
 mail = Mail(app)
 
-app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5 MB receipt limit
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5 MB
 
-# ──────────────────────────────────────────────────────────
-# DB INDEXES — created once at startup (auto-ignored if they already exist)
-# ──────────────────────────────────────────────────────────
-with app.app_context():
-    try:
-        # name_lower and email_lower are unique — prevents duplicate accounts
-        mongo.db.users.create_index([("name_lower", 1)], unique=True,
-                                     name="unique_name_lower")
-        mongo.db.users.create_index([("email_lower", 1)], unique=True,
-                                     name="unique_email_lower")
-        print("[DB] ✅ Indexes ready.")
-    except Exception as e:
-        print(f"[DB] Index note: {e}")
-
-# ──────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────
 # VALIDATION HELPERS
-# ──────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────
 
 def validate_name(name):
-    """
-    - Min 3, max 40 characters
-    - Letters only (spaces, hyphens, apostrophes allowed between letters)
-    - No numbers, no special symbols, must start with a letter
-    """
-    n = name.strip() if name else ''
-    if len(n) < 3:
-        return "Name must be at least 3 characters long."
-    if len(n) > 40:
-        return "Name must be 40 characters or fewer."
+    n = (name or '').strip()
+    if len(n) < 3:  return "Name must be at least 3 characters long."
+    if len(n) > 40: return "Name must be 40 characters or fewer."
     if not re.match(r"^[A-Za-z][A-Za-z\s'\-]{2,39}$", n):
-        return "Name must contain only letters. Spaces, hyphens, and apostrophes are allowed."
-    if re.search(r"[^A-Za-z\s'\-]", n):
-        return "Name cannot contain numbers or special characters."
-    # No consecutive spaces or hyphens
+        return "Name must contain only letters (spaces, hyphens, apostrophes allowed)."
     if re.search(r"[\s\-']{2,}", n):
-        return "Name cannot have consecutive spaces, hyphens, or apostrophes."
+        return "Name cannot have consecutive spaces or hyphens."
     return None
 
 def validate_email(email):
-    """
-    - Required field
-    - Valid format (user@domain.tld)
-    - Max 100 characters
-    - Blocks known disposable email providers
-    """
-    if not email or not email.strip():
-        return "Email address is required."
-    e = email.strip()
-    if len(e) > 100:
-        return "Email address is too long (max 100 characters)."
-    pattern = r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$"
-    if not re.match(pattern, e):
-        return "Please enter a valid email address (e.g. you@gmail.com)."
-    blocked_domains = ['mailinator.com', 'guerrillamail.com', 'trashmail.com',
-                       'tempmail.com', 'throwaway.email', 'yopmail.com']
-    domain = e.split('@')[-1].lower()
-    if domain in blocked_domains:
+    e = (email or '').strip()
+    if not e: return "Email address is required."
+    if len(e) > 100: return "Email is too long (max 100 chars)."
+    if not re.match(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$", e):
+        return "Please enter a valid email address."
+    if e.split('@')[-1].lower() in ['mailinator.com','guerrillamail.com','trashmail.com','yopmail.com']:
         return "Please use a real email address, not a disposable one."
     return None
 
 def validate_password(password):
-    """
-    - Min 8 characters
-    - At least 1 uppercase letter
-    - At least 1 lowercase letter
-    - At least 1 digit
-    - No spaces allowed
-    """
-    if not password:
-        return "Password is required."
-    if ' ' in password:
-        return "Password cannot contain spaces."
-    if len(password) < 8:
-        return "Password must be at least 8 characters long."
-    if len(password) > 64:
-        return "Password must be 64 characters or fewer."
-    if not re.search(r"[A-Z]", password):
-        return "Password must contain at least one uppercase letter (A-Z)."
-    if not re.search(r"[a-z]", password):
-        return "Password must contain at least one lowercase letter (a-z)."
-    if not re.search(r"\d", password):
-        return "Password must contain at least one number (0-9)."
+    p = password or ''
+    if not p:              return "Password is required."
+    if ' ' in p:           return "Password cannot contain spaces."
+    if len(p) < 8:         return "Password must be at least 8 characters."
+    if len(p) > 64:        return "Password cannot exceed 64 characters."
+    if not re.search(r"[A-Z]", p): return "Password must contain an uppercase letter."
+    if not re.search(r"[a-z]", p): return "Password must contain a lowercase letter."
+    if not re.search(r"\d",    p): return "Password must contain a number."
     return None
 
 def validate_budget(value):
-    """Monthly budget: numeric, between ₹100 and ₹10,00,000."""
-    try:
-        amount = float(value)
-    except (ValueError, TypeError):
-        return "Please enter a valid number for monthly budget."
-    if amount < 100:
-        return "Monthly budget must be at least ₹100."
-    if amount > 1_000_000:
-        return "Monthly budget cannot exceed ₹10,00,000."
+    try: amount = float(value)
+    except (ValueError, TypeError): return "Please enter a valid number for your budget."
+    if amount < 100:       return "Budget must be at least Rs.100."
+    if amount > 1_000_000: return "Budget cannot exceed Rs.10,00,000."
     return None
 
-# ──────────────────────────────────────────────────────────
-# ASYNC EMAIL HELPER
-# ──────────────────────────────────────────────────────────
-
-def send_async_email(app, msg):
-    """Send email in a background thread so the UI stays responsive."""
-    with app.app_context():
-        try:
-            mail.send(msg)
-            print("[MAIL] ✅ Email sent successfully.")
-        except Exception as e:
-            print(f"[MAIL] ❌ Background mail error: {e}")
-
-# ──────────────────────────────────────────────────────────
-# ZERO-PERSISTENCE AUTH GUARD (before every request)
-# ──────────────────────────────────────────────────────────
-
-# Routes that are publicly accessible without login
-_PUBLIC_ROUTES = {'my_profile', 'logout', 'about_us', 'static'}
+# ──────────────────────────────────────────────────────────────
+# AUTH GUARD — Zero-Persistence (every request)
+# ──────────────────────────────────────────────────────────────
+_PUBLIC = {'home', 'my_profile', 'logout', 'about_us', 'static'}
 
 @app.before_request
 def require_login():
-    """
-    Task 1 — Zero-Persistence Rule:
-    Every protected page checks the session. No cached user state.
-    If not logged in, redirect to the Budget Gateway.
-    """
-    if request.endpoint in _PUBLIC_ROUTES or request.endpoint is None:
-        return  # Public page — allow through
+    if request.endpoint in _PUBLIC or request.endpoint is None:
+        return
     if 'username' not in session:
-        flash('Please log in to access your vault. 🔐', 'warning')
+        flash('Please log in to access your vault.', 'warning')
         return redirect(url_for('my_profile'))
 
-# ──────────────────────────────────────────────────────────
-# CORE ROUTES
-# ──────────────────────────────────────────────────────────
-
-# Valid expense categories
+# ──────────────────────────────────────────────────────────────
+# EXPENSE CATEGORIES (shared by backend + templates)
+# ──────────────────────────────────────────────────────────────
 EXPENSE_CATEGORIES = [
     'Educational', 'Lifestyle', 'Healthy Food',
     'Junk Food', 'Hostel Rent', 'Travelling', 'Other'
 ]
 
+# ──────────────────────────────────────────────────────────────
+# ROUTES
+# ──────────────────────────────────────────────────────────────
+
 @app.route('/')
 def home():
-    """Home dashboard — fetches live budget stats and today's expenses."""
-    username = session.get('username')
-
-    # Zero-Persistence: always re-fetch from DB
-    user = mongo.db.users.find_one({'name': username}, {'password': 0})
-
-    # Today's expense summary
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-    today_expenses = list(
-        mongo.db.daily_expenses
-        .find({'username': username, 'created_at': {'$gte': today_start}})
-        .sort('created_at', -1)
-        .limit(5)
-    )
-    today_total = sum(
-        e.get('amount', 0) for e in today_expenses if not e.get('is_loan', False)
-    )
-
-    # Check if coins animation should play (set by add_expense on success)
-    play_coins = session.pop('play_coins', False)
-
-    return render_template(
-        'index.html',
-        user=user,
-        today_expenses=today_expenses,
-        today_total=today_total,
-        categories=EXPENSE_CATEGORIES,
-        play_coins=play_coins,
-    )
+    """Public landing page."""
+    return render_template('index.html')
 
 
 @app.route('/my_profile', methods=['GET', 'POST'])
 def my_profile():
-    """
-    Task 1 — The Secure Budget Gateway.
-    GET  → Show login/register form.
-    POST → Handle login or new-user registration with full validation + 30-day reset.
-    """
-    # Already logged in → go home
+    """Login / Register — The Secure Budget Gateway."""
     if 'username' in session:
         return redirect(url_for('home'))
+
+    if mongo.db is None:
+        flash('Database is currently unreachable. Please try again later.', 'error')
+        return render_template('profile.html')
 
     if request.method == 'POST':
         form_type = request.form.get('form_type', '').strip()
         name      = request.form.get('name', '').strip()
         password  = request.form.get('password', '').strip()
 
-        # ── Universal field validation ────────────────────────────────────
         name_err = validate_name(name)
         if name_err:
-            flash(name_err, 'error')
-            return redirect(url_for('my_profile'))
+            flash(name_err, 'error'); return redirect(url_for('my_profile'))
 
         pass_err = validate_password(password)
         if pass_err:
-            flash(pass_err, 'error')
-            return redirect(url_for('my_profile'))
+            flash(pass_err, 'error'); return redirect(url_for('my_profile'))
 
-        users = mongo.db.users  # Atlas auto-creates this collection on first write
+        users = mongo.db.users
 
-        # ═══════════════════════════════════════════════════════════════
-        # REGISTER — Create a new user vault
-        # ═══════════════════════════════════════════════════════════════
+        # ── REGISTER ───────────────────────────────────────────────────────
         if form_type == 'register':
             email         = request.form.get('email', '').strip().lower()
             monthly_limit = request.form.get('monthly_limit', '').strip()
 
-            # Validate email
             email_err = validate_email(email)
             if email_err:
-                flash(email_err, 'error')
-                return redirect(url_for('my_profile'))
+                flash(email_err, 'error'); return redirect(url_for('my_profile'))
 
-            # Validate budget
             budget_err = validate_budget(monthly_limit)
             if budget_err:
-                flash(budget_err, 'error')
-                return redirect(url_for('my_profile'))
+                flash(budget_err, 'error'); return redirect(url_for('my_profile'))
 
-            # Duplicate name check (case-insensitive)
             if users.find_one({'name_lower': name.lower()}):
-                flash(f'The name "{name}" is already taken. Please choose a different name or log in.', 'error')
+                flash(f'The name "{name}" is already taken. Please choose another.', 'error')
                 return redirect(url_for('my_profile'))
 
-            # Duplicate email check
             if users.find_one({'email_lower': email}):
                 flash('This email is already registered. Please log in instead.', 'error')
                 return redirect(url_for('my_profile'))
 
-            # Hash password securely (bcrypt via werkzeug)
-            hashed_pw = generate_password_hash(password, method='pbkdf2:sha256', salt_length=16)
-
             now = datetime.utcnow()
-
-            # ── Full user document stored in MongoDB ──────────────────────
-            user_doc = {
-                # Identity
-                'name'          : name,          # Display name (original casing)
-                'name_lower'    : name.lower(),  # For case-insensitive lookups & unique index
-                'email'         : email,         # Stored lowercase
-                'email_lower'   : email,         # Used by unique index
-                'password'      : hashed_pw,     # Bcrypt hash — never stored plain
-
-                # Budget
-                'monthly_limit' : float(monthly_limit),
-                'total_spent'   : 0.0,
-                'balance'       : float(monthly_limit),  # Precomputed for quick display
-
-                # 30-Day cycle
-                'start_date'    : now,
-                'cycle_number'  : 1,             # How many 30-day cycles completed
-
-                # Guardian mail flags (Task 6) — reset each cycle
-                'alert_10_sent' : False,
-                'alert_5_sent'  : False,
-                'over_budget'   : False,
-
-                # Meta
-                'created_at'    : now,
-                'last_login'    : now,
-                'login_count'   : 1,
-            }
-
             try:
-                users.insert_one(user_doc)
+                users.insert_one({
+                    'name': name, 'name_lower': name.lower(),
+                    'email': email, 'email_lower': email,
+                    'password': generate_password_hash(password, method='pbkdf2:sha256', salt_length=16),
+                    'monthly_limit': float(monthly_limit),
+                    'total_spent': 0.0, 'balance': float(monthly_limit),
+                    'start_date': now, 'cycle_number': 1,
+                    'alert_10_sent': False, 'alert_5_sent': False, 'over_budget': False,
+                    'created_at': now, 'last_login': now, 'login_count': 1,
+                })
             except Exception as e:
                 print(f"[DB] Register error: {e}")
                 flash('Could not create account. Please try again.', 'error')
                 return redirect(url_for('my_profile'))
 
-            # Auto-login after registration
-            session['username']      = name
-            session['email']         = email
-            session['monthly_limit'] = float(monthly_limit)
-            flash(f'Welcome aboard, {name}! 🎉 Your vault is ready.', 'success')
+            session['username'] = name
+            session['email'] = email
+            flash(f'Welcome aboard, {name}! Your vault is ready.', 'success')
             return redirect(url_for('home'))
 
-        # ═══════════════════════════════════════════════════════════════
-        # LOGIN — Authenticate existing user
-        # ═══════════════════════════════════════════════════════════════
+        # ── LOGIN ───────────────────────────────────────────────────────────
         elif form_type == 'login':
-            # Zero-Persistence: ALWAYS fetch fresh from DB — no cached state
             user = users.find_one({'name_lower': name.lower()})
-
             if not user:
                 flash('No account found with that name. Please register first.', 'error')
                 return redirect(url_for('my_profile'))
@@ -352,285 +237,181 @@ def my_profile():
                 flash('Incorrect password. Please try again.', 'error')
                 return redirect(url_for('my_profile'))
 
-            # ── 30-Day Temporal Reset Logic ───────────────────────────────
-            start_date  = user.get('start_date', datetime.utcnow())
-            days_passed = (datetime.utcnow() - start_date).days
-
-            if days_passed >= 30:
-                # Archive the closing month's data
+            # 30-day cycle reset
+            start_date = user.get('start_date', datetime.utcnow())
+            if (datetime.utcnow() - start_date).days >= 30:
                 try:
                     mongo.db.monthly_archives.insert_one({
-                        'username'      : user['name'],
-                        'email'         : user.get('email', ''),
-                        'cycle_number'  : user.get('cycle_number', 1),
-                        'total_spent'   : user.get('total_spent', 0.0),
-                        'monthly_limit' : user.get('monthly_limit', 0.0),
-                        'period_start'  : start_date,
-                        'period_end'    : datetime.utcnow(),
-                        'archived_at'   : datetime.utcnow(),
+                        'username': user['name'], 'email': user.get('email',''),
+                        'cycle_number': user.get('cycle_number',1),
+                        'total_spent': user.get('total_spent',0.0),
+                        'monthly_limit': user.get('monthly_limit',0.0),
+                        'period_start': start_date, 'period_end': datetime.utcnow(),
                     })
+                    users.update_one({'_id': user['_id']}, {'$set': {
+                        'total_spent': 0.0, 'balance': user.get('monthly_limit',0.0),
+                        'start_date': datetime.utcnow(),
+                        'alert_10_sent': False, 'alert_5_sent': False, 'over_budget': False,
+                    }, '$inc': {'cycle_number': 1}})
+                    flash('30-day cycle complete! Budget reset for new month.', 'warning')
                 except Exception as e:
-                    print(f"[DB] Archive error: {e}")
+                    print(f"[DB] Cycle reset error: {e}")
 
-                # Reset for new 30-day cycle
-                new_limit = user.get('monthly_limit', 0.0)
-                try:
-                    users.update_one(
-                        {'_id': user['_id']},
-                        {'$set': {
-                            'total_spent'   : 0.0,
-                            'balance'       : new_limit,
-                            'start_date'    : datetime.utcnow(),
-                            'alert_10_sent' : False,
-                            'alert_5_sent'  : False,
-                            'over_budget'   : False,
-                        },
-                        '$inc': {'cycle_number': 1}}
-                    )
-                except Exception as e:
-                    print(f"[DB] Reset error: {e}")
-
-                # Re-fetch updated document
-                user = users.find_one({'_id': user['_id']})
-                flash('📅 30-day cycle complete! Your budget has been reset for the new month.', 'warning')
-
-            # Update last_login and increment login_count
             try:
-                users.update_one(
-                    {'_id': user['_id']},
-                    {'$set': {'last_login': datetime.utcnow()},
-                     '$inc': {'login_count': 1}}
-                )
+                users.update_one({'_id': user['_id']},
+                    {'$set': {'last_login': datetime.utcnow()}, '$inc': {'login_count': 1}})
             except Exception as e:
                 print(f"[DB] Login update error: {e}")
 
-            # ── Store session (minimal — DB is source of truth) ───────────
-            session['username']      = user['name']             # Original casing
-            session['email']         = user.get('email', '')
-            session['monthly_limit'] = user.get('monthly_limit', 0.0)
-
-            flash(f'Welcome back, {user["name"]}! 🔓 Vault unlocked.', 'success')
+            session['username'] = user['name']
+            session['email']    = user.get('email', '')
+            flash(f'Welcome back, {user["name"]}! Vault unlocked.', 'success')
             return redirect(url_for('home'))
 
-        else:
-            flash('Invalid form submission.', 'error')
-            return redirect(url_for('my_profile'))
+        flash('Invalid form submission.', 'error')
+        return redirect(url_for('my_profile'))
 
-    # GET — show the gateway page
     return render_template('profile.html')
 
 
 @app.route('/logout')
 def logout():
-    """Securely clear session and return to Budget Gateway."""
+    """Clear session and return to login."""
     username = session.get('username', 'User')
     session.clear()
-    flash(f'👋 Goodbye, {username}! You have been logged out securely.', 'success')
+    flash(f'Goodbye, {username}! You have been logged out.', 'success')
     return redirect(url_for('my_profile'))
 
 
-# ──────────────────────────────────────────────────────────
-# OTHER NAVIGATION ROUTES
-# ──────────────────────────────────────────────────────────
-
 @app.route('/my_expenses')
 def my_expenses():
-    return render_template('expenses.html')
+    """Task 2 — Expense entry page."""
+    username   = session.get('username')
+    user       = mongo.db.users.find_one({'name': username}, {'password': 0}) if mongo.db is not None else None
+    play_coins = session.pop('play_coins', False)
+    return render_template('expenses.html', user=user,
+                           categories=EXPENSE_CATEGORIES, play_coins=play_coins)
+
 
 @app.route('/analysis')
 def analysis():
     return render_template('analysis.html')
 
+
 @app.route('/interval_spend')
 def interval_spend():
     return render_template('interval_spend.html')
+
 
 @app.route('/about_us')
 def about_us():
     return render_template('about_us.html')
 
-# ──────────────────────────────────────────────────────────
-# DATA SUBMISSION ROUTES (Tasks 2–7 — TODO placeholders)
-# ──────────────────────────────────────────────────────────
 
 @app.route('/add_expense', methods=['POST'])
 def add_expense():
-    """
-    Task 2 — Daily Expense & Loan Entry.
-    Validates input, inserts into daily_expenses collection,
-    updates user's total_spent & balance, sets coin animation flag.
-    """
+    """Task 2 — Save daily expense / loan to MongoDB."""
     username = session.get('username')
 
+    if mongo.db is None:
+        flash('Database unavailable. Please try again later.', 'error')
+        return redirect(url_for('my_expenses'))
+
     try:
-        # ── Read form fields ──────────────────────────────────────────────
         category    = request.form.get('category', '').strip()
         amount_str  = request.form.get('amount', '').strip()
         description = request.form.get('description', '').strip()
         exp_date_str= request.form.get('expense_date', '').strip()
         is_loan     = request.form.get('is_loan') == 'on'
 
-        # ── Validate required fields ──────────────────────────────────────
         if not category or category not in EXPENSE_CATEGORIES:
-            flash('Please select a valid expense category.', 'error')
-            return redirect(url_for('home'))
-
-        if not amount_str:
-            flash('Amount is required.', 'error')
-            return redirect(url_for('home'))
+            flash('Please select a valid category.', 'error')
+            return redirect(url_for('my_expenses'))
 
         try:
             amount = round(float(amount_str), 2)
-            if amount <= 0:
-                flash('Amount must be greater than zero.', 'error')
-                return redirect(url_for('home'))
+            if amount <= 0:   raise ValueError
             if amount > 100000:
-                flash('Single expense cannot exceed \u20b91,00,000.', 'error')
-                return redirect(url_for('home'))
-        except ValueError:
-            flash('Please enter a valid number for amount.', 'error')
-            return redirect(url_for('home'))
+                flash('Single expense cannot exceed Rs.1,00,000.', 'error')
+                return redirect(url_for('my_expenses'))
+        except (ValueError, TypeError):
+            flash('Please enter a valid amount.', 'error')
+            return redirect(url_for('my_expenses'))
 
-        # ── Parse expense date ────────────────────────────────────────────
         try:
             expense_date = datetime.strptime(exp_date_str, '%Y-%m-%d') if exp_date_str else datetime.utcnow()
         except ValueError:
             expense_date = datetime.utcnow()
 
-        # ── Build base expense document ───────────────────────────────────
-        expense_doc = {
-            'username'     : username,
-            'category'     : category,
-            'amount'       : amount,
-            'description'  : description or f'{category} expense',
-            'expense_date' : expense_date,
-            'is_loan'      : is_loan,
-            'created_at'   : datetime.utcnow(),
+        doc = {
+            'username': username, 'category': category,
+            'amount': amount, 'description': description or f'{category} expense',
+            'expense_date': expense_date, 'is_loan': is_loan,
+            'created_at': datetime.utcnow(),
         }
 
-        # ── Loan-specific fields ──────────────────────────────────────────
         if is_loan:
             friend_name  = request.form.get('friend_name', '').strip()
             friend_email = request.form.get('friend_email', '').strip()
-            relationship = request.form.get('relationship', '').strip()
+            relationship = request.form.get('relationship', 'Friend').strip()
 
             if not friend_name or not friend_email:
-                flash('Friend name and email are required for a loan entry.', 'error')
-                return redirect(url_for('home'))
-
-            # Basic email check
+                flash('Friend name and email are required for a loan.', 'error')
+                return redirect(url_for('my_expenses'))
             if not re.match(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$", friend_email):
                 flash('Please enter a valid email for your friend.', 'error')
-                return redirect(url_for('home'))
+                return redirect(url_for('my_expenses'))
 
-            expense_doc.update({
-                'friend_name' : friend_name,
-                'friend_email': friend_email,
-                'relationship': relationship or 'Friend',
-                'loan_status' : 'pending',   # pending | returned
-            })
+            doc.update({'friend_name': friend_name, 'friend_email': friend_email,
+                        'relationship': relationship, 'loan_status': 'pending'})
 
-        # ── Insert into daily_expenses (auto-created by Atlas) ────────────
-        mongo.db.daily_expenses.insert_one(expense_doc)
+        mongo.db.daily_expenses.insert_one(doc)
 
-        # ── Update user's running totals (only for real expenses, not loans) ──
+        # Update user balance (not for loans)
         if not is_loan:
             user = mongo.db.users.find_one({'name': username})
             if user:
-                new_spent   = round(user.get('total_spent', 0.0) + amount, 2)
-                monthly_lim = user.get('monthly_limit', 0.0)
-                new_balance = round(monthly_lim - new_spent, 2)
+                new_spent = round(user.get('total_spent', 0.0) + amount, 2)
+                lim       = user.get('monthly_limit', 0.0)
+                new_bal   = round(lim - new_spent, 2)
+                mongo.db.users.update_one({'name': username}, {'$set': {
+                    'total_spent': new_spent, 'balance': new_bal, 'over_budget': new_bal < 0
+                }})
 
-                mongo.db.users.update_one(
-                    {'name': username},
-                    {'$set': {
-                        'total_spent': new_spent,
-                        'balance'    : new_balance,
-                        'over_budget': new_balance < 0,
-                    }}
-                )
-
-                # ── Guardian threshold check (Task 6 placeholder) ─────────
-                if monthly_lim > 0:
-                    remaining_pct = (new_balance / monthly_lim) * 100
-                    alert_10 = user.get('alert_10_sent', False)
-                    alert_5  = user.get('alert_5_sent', False)
-
-                    if remaining_pct <= 0 and not user.get('over_budget', False):
-                        # TODO Task 6: send over-budget email every time
-                        pass
-                    elif remaining_pct <= 5 and not alert_5:
-                        # TODO Task 6: send 5% warning email once
-                        pass
-                    elif remaining_pct <= 10 and not alert_10:
-                        # TODO Task 6: send 10% caution email once
-                        pass
-
-        # ── Trigger coin animation on next home load ──────────────────────
         session['play_coins'] = True
-
         if is_loan:
-            flash(f'Loan of \u20b9{amount:,.2f} to {request.form.get("friend_name", "friend")} recorded! \U0001f91d', 'success')
+            flash(f'Loan of Rs.{amount:,.2f} to {request.form.get("friend_name", "friend")} recorded.', 'success')
         else:
-            flash(f'\u20b9{amount:,.2f} tracked under {category}! Keep it up! \U0001f4b0', 'success')
+            flash(f'Rs.{amount:,.2f} tracked under {category}.', 'success')
 
-        return redirect(url_for('home'))
-
-    except Exception as e:
-        print(f'[Expense] Unexpected error: {e}')
-        flash('Something went wrong. Please try again.', 'error')
-        return redirect(url_for('home'))
-
-@app.route('/add_friend_loan', methods=['POST'])
-def add_friend_loan():
-    """Handles logging a friend loan (Task 7)."""
-    try:
-        # TODO Task 7: Save loan, send Flask-Mail to friend's email
         return redirect(url_for('my_expenses'))
-    except Exception as e:
-        return "Internal Error", 500
 
-@app.route('/add_interval_spend', methods=['POST'])
-def add_interval_spend():
-    """Handles EMIs / rent / subscriptions (Task 11)."""
-    try:
-        # TODO Task 11: Save to recurring_payments, calculate due date
-        return redirect(url_for('interval_spend'))
     except Exception as e:
-        return "Internal Error", 500
+        print(f'[Expense] Error: {e}')
+        flash('Something went wrong. Please try again.', 'error')
+        return redirect(url_for('my_expenses'))
 
-# ──────────────────────────────────────────────────────────
-# API ROUTES (Tasks 8–10)
-# ──────────────────────────────────────────────────────────
 
 @app.route('/api/spend_data')
 def spend_data():
-    """API for Chart.js doughnut / line charts (Task 8)."""
-    # TODO Task 8: Replace dummy data with real MongoDB $group aggregation
-    dummy_data = {
-        "categories": ["Educational", "Lifestyle", "Healthy Food", "Junk Food", "Hostel Rent", "Travelling"],
+    """Chart.js data API (Task 8 placeholder)."""
+    return jsonify({
+        "categories": ["Educational","Lifestyle","Healthy Food","Junk Food","Hostel Rent","Travelling"],
         "amounts":    [1200, 500, 800, 300, 5000, 450]
-    }
-    return jsonify(dummy_data)
+    })
 
-# ──────────────────────────────────────────────────────────
-# ERROR HANDLERS
-# ──────────────────────────────────────────────────────────
-
-@app.errorhandler(413)
-def request_entity_too_large(error):
-    return ("<h1>Receipt file is too large!</h1>"
-            "<p>Please keep your screenshot under 5MB.</p>"
-            "<a href='/my_expenses'>Try Again</a>"), 413
 
 @app.errorhandler(404)
 def page_not_found(error):
-    flash('Page not found. Redirecting to home.', 'warning')
+    flash('Page not found.', 'warning')
     return redirect(url_for('home'))
 
-# ──────────────────────────────────────────────────────────
-# RUN
-# ──────────────────────────────────────────────────────────
+
+@app.errorhandler(413)
+def file_too_large(error):
+    flash('File is too large. Maximum size is 5MB.', 'error')
+    return redirect(url_for('my_expenses'))
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

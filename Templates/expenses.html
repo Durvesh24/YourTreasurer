@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Expenses | YourTreasurer</title>
+    <meta name="description" content="Log your daily expenses and track money lent to friends.">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/Style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/expenses.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <div class="brand-logo-top">
+        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="YourTreasurer">
+    </div>
+
+    <button class="menu-trigger" id="menu-btn"><span>&#9776; Menu</span></button>
+    <div class="menu-backdrop" id="menu-backdrop"></div>
+
+    <nav id="side-nav" class="side-nav">
+        <button class="close-btn" id="close-btn">&times;</button>
+        <div class="nav-links">
+            <a href="/" data-bg="{{ url_for('static', filename='images/bg.svg') }}">Home</a>
+            <a href="/my_profile" data-bg="{{ url_for('static', filename='images/profile.jpg') }}">My Profile</a>
+            <a href="/my_expenses" data-bg="{{ url_for('static', filename='images/expenses.avif') }}" class="nav-active">My Expenses</a>
+            <a href="/analysis" data-bg="{{ url_for('static', filename='images/Analysis.jpg') }}">Analysis</a>
+            <a href="/interval_spend" data-bg="{{ url_for('static', filename='images/interval.jpg') }}">Interval Spend</a>
+            <a href="/about_us" data-bg="{{ url_for('static', filename='images/aboutus.png') }}">About Us</a>
+            {% if session.get('username') %}
+            <a href="/logout" data-bg="{{ url_for('static', filename='images/bg.svg') }}" class="nav-logout">Logout</a>
+            {% endif %}
+        </div>
+    </nav>
+
+    <div id="dynamic-bg" class="dynamic-bg" style="background-image: url('{{ url_for('static', filename='images/bg.svg') }}');"></div>
+    <div id="hover-bg" class="dynamic-bg hover-layer"></div>
+
+    <!-- Coin Rain -->
+    <div class="coin-rain" id="coin-rain" aria-hidden="true"></div>
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="flash-bar">
+        {% for cat, msg in messages %}
+        <div class="flash-item flash-{{ cat }}">{{ msg }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <!-- PAGE -->
+    <div class="page-container">
+
+        <header class="page-header">
+            <div>
+                <h1 class="page-title">My Expenses</h1>
+                <p class="page-desc">Track your daily spending and loans</p>
+            </div>
+            {% if user %}
+            <div class="balance-chip {% if user.get('over_budget') %}chip-danger{% elif (user.get('total_spent',0) / [user.get('monthly_limit',1), 1]|max * 100) >= 85 %}chip-warn{% endif %}">
+                <span class="chip-label">Remaining</span>
+                <span class="chip-value">&#8377;{{ '{:,.2f}'.format(user.get('balance', 0)) }}</span>
+            </div>
+            {% endif %}
+        </header>
+
+        <div class="form-panel">
+
+            <form id="expense-form" action="/add_expense" method="POST" novalidate>
+
+                <!-- Row 1: Category + Amount -->
+                <div class="form-row-2">
+                    <div class="form-field" id="field-category">
+                        <label class="field-label" for="category">Category <span class="req">*</span></label>
+                        <div class="select-box">
+                            <select id="category" name="category" required>
+                                <option value="" disabled selected>Select category</option>
+                                {% for cat in categories %}
+                                <option value="{{ cat }}">{{ cat }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-field" id="field-amount">
+                        <label class="field-label" for="amount">Amount <span class="req">*</span></label>
+                        <div class="amount-box">
+                            <span class="currency-sign">&#8377;</span>
+                            <input type="number" id="amount" name="amount"
+                                   placeholder="0.00" min="1" max="100000" step="0.01" required>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Row 2: Description + Date -->
+                <div class="form-row-2">
+                    <div class="form-field flex2">
+                        <label class="field-label" for="description">
+                            Description <span class="opt">— optional</span>
+                        </label>
+                        <input type="text" id="description" name="description"
+                               placeholder="What was this expense for?" maxlength="120">
+                    </div>
+                    <div class="form-field">
+                        <label class="field-label" for="expense_date">Date</label>
+                        <input type="date" id="expense_date" name="expense_date">
+                    </div>
+                </div>
+
+                <!-- Loan Toggle -->
+                <div class="toggle-row">
+                    <label class="toggle-wrap" for="is_loan">
+                        <input type="checkbox" id="is_loan" name="is_loan">
+                        <span class="toggle-track"><span class="toggle-knob"></span></span>
+                        <span class="toggle-text">This is a loan to a friend</span>
+                    </label>
+                </div>
+
+                <!-- Loan Fields (revealed on toggle) -->
+                <div class="loan-section" id="loan-section">
+                    <div class="loan-inner">
+                        <p class="loan-title">Loan Details</p>
+
+                        <div class="form-row-2">
+                            <div class="form-field" id="field-friend-name">
+                                <label class="field-label" for="friend_name">Friend's Name <span class="req">*</span></label>
+                                <input type="text" id="friend_name" name="friend_name"
+                                       placeholder="Full name" maxlength="40">
+                            </div>
+                            <div class="form-field">
+                                <label class="field-label" for="relationship">Relationship</label>
+                                <div class="select-box">
+                                    <select id="relationship" name="relationship">
+                                        <option value="Friend">Friend</option>
+                                        <option value="Roommate">Roommate</option>
+                                        <option value="Classmate">Classmate</option>
+                                        <option value="Family">Family</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-field" id="field-friend-email">
+                            <label class="field-label" for="friend_email">Friend's Email <span class="req">*</span></label>
+                            <input type="email" id="friend_email" name="friend_email"
+                                   placeholder="friend@example.com">
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="submit-btn" id="submit-btn">
+                    <span id="btn-text">Record Entry</span>
+                    <span id="btn-loading" hidden>Processing...</span>
+                </button>
+
+            </form>
+        </div>
+
+    </div>
+
+    <footer class="common-footer">YourTreasurer &copy; 2026 | Helping Hand</footer>
+
+    <script>
+    // NAV
+    const menuBtn = document.getElementById('menu-btn');
+    const closeBtn = document.getElementById('close-btn');
+    const sideNav  = document.getElementById('side-nav');
+    const backdrop = document.getElementById('menu-backdrop');
+    const hoverBg  = document.getElementById('hover-bg');
+
+    function toggleMenu() {
+        const open = sideNav.classList.toggle('open');
+        backdrop.classList.toggle('active');
+        document.body.style.overflow = open ? 'hidden' : '';
+        if (!open) hoverBg.style.opacity = '0';
+    }
+    menuBtn.addEventListener('click', toggleMenu);
+    closeBtn.addEventListener('click', toggleMenu);
+    backdrop.addEventListener('click', toggleMenu);
+    document.querySelectorAll('.nav-links a').forEach(link => {
+        link.addEventListener('mouseenter', () => {
+            const bg = link.dataset.bg;
+            if (bg) { hoverBg.style.backgroundImage = `url(${bg})`; hoverBg.style.opacity = '1'; }
+        });
+        link.addEventListener('mouseleave', () => hoverBg.style.opacity = '0');
+    });
+
+    // DEFAULT DATE = TODAY, no future dates
+    const dateField = document.getElementById('expense_date');
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const today = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+    dateField.value = today;
+    dateField.max   = today;
+
+    // LOAN TOGGLE
+    const loanCheck   = document.getElementById('is_loan');
+    const loanSection = document.getElementById('loan-section');
+    const friendName  = document.getElementById('friend_name');
+    const friendEmail = document.getElementById('friend_email');
+
+    loanCheck.addEventListener('change', function() {
+        if (this.checked) {
+            loanSection.classList.add('open');
+            friendName.required  = true;
+            friendEmail.required = true;
+            document.getElementById('btn-text').textContent = 'Record Loan';
+        } else {
+            loanSection.classList.remove('open');
+            friendName.required  = false;
+            friendEmail.required = false;
+            friendName.value     = '';
+            friendEmail.value    = '';
+            document.getElementById('btn-text').textContent = 'Record Entry';
+        }
+    });
+
+    // INLINE ERRORS
+    function setError(id, msg) {
+        clearError(id);
+        const el = document.getElementById(id);
+        const wrap = el.closest('.form-field');
+        if (!wrap) return;
+        const e = document.createElement('span');
+        e.className = 'field-error';
+        e.textContent = msg;
+        wrap.appendChild(e);
+        el.classList.add('is-error');
+    }
+    function clearError(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const wrap = el.closest('.form-field');
+        if (wrap) { const e = wrap.querySelector('.field-error'); if (e) e.remove(); }
+        el.classList.remove('is-error');
+    }
+    ['category','amount','friend_name','friend_email'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', () => clearError(id));
+    });
+
+    // FORM SUBMIT VALIDATION
+    document.getElementById('expense-form').addEventListener('submit', function(e) {
+        let ok = true;
+        if (!document.getElementById('category').value) {
+            setError('category', 'Please select a category.'); ok = false;
+        }
+        const amt = parseFloat(document.getElementById('amount').value);
+        if (!amt || amt <= 0)   { setError('amount', 'Enter an amount greater than zero.'); ok = false; }
+        else if (amt > 100000)  { setError('amount', 'Cannot exceed \u20b91,00,000 per entry.'); ok = false; }
+
+        if (loanCheck.checked) {
+            if (!friendName.value.trim())  { setError('friend_name', 'Name is required.'); ok = false; }
+            const fe = friendEmail.value.trim();
+            if (!fe || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fe)) {
+                setError('friend_email', 'Enter a valid email.'); ok = false;
+            }
+        }
+        if (!ok) { e.preventDefault(); return; }
+        document.getElementById('btn-text').hidden    = true;
+        document.getElementById('btn-loading').hidden = false;
+        document.getElementById('submit-btn').disabled = true;
+    });
+
+    // COIN CLINK
+    function playCoinSound() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const t = ctx.currentTime;
+            [[1047,0],[1319,0.08],[1047,0.16]].forEach(([f, d]) => {
+                const osc = ctx.createOscillator(), gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(f, t+d);
+                gain.gain.setValueAtTime(0.2, t+d);
+                gain.gain.exponentialRampToValueAtTime(0.001, t+d+0.22);
+                osc.start(t+d); osc.stop(t+d+0.24);
+            });
+        } catch(_) {}
+    }
+
+    // COIN RAIN
+    function launchCoinRain() {
+        const rain = document.getElementById('coin-rain');
+        rain.innerHTML = ''; rain.style.display = 'block';
+        const symbols = ['\u20b9','\u0024','\u20ac','\u00a5','\u00a3'];
+        for (let i = 0; i < 50; i++) {
+            const c = document.createElement('span');
+            c.className = 'coin';
+            c.textContent = symbols[Math.floor(Math.random()*5)];
+            c.style.left = (Math.random()*100)+'vw';
+            c.style.animationDelay    = (Math.random()*1.4)+'s';
+            c.style.animationDuration = (1.5+Math.random()*1.2)+'s';
+            c.style.fontSize = (0.9+Math.random()*0.8)+'rem';
+            rain.appendChild(c);
+        }
+        setTimeout(() => { rain.style.display='none'; rain.innerHTML=''; }, 3800);
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+        if ({{ 'true' if play_coins else 'false' }}) {
+            playCoinSound();
+            launchCoinRain();
+        }
+        setTimeout(() => {
+            document.querySelectorAll('.flash-item').forEach(el => {
+                el.style.transition = 'opacity 0.4s, transform 0.4s';
+                el.style.opacity = '0'; el.style.transform = 'translateY(-6px)';
+                setTimeout(() => el.remove(), 400);
+            });
+        }, 5000);
+    });
+    </script>
+</body>
+</html>
