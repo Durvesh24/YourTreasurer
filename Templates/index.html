@@ -35,7 +35,8 @@
         </div>
     </nav>
 
-    <div id="dynamic-bg" class="dynamic-bg" style="background-image: url('{{ url_for('static', filename='images/bg.svg') }}');"></div>
+    <style> #dynamic-bg { background-image: url("{{ url_for('static', filename='images/bg.svg') }}"); } </style>
+    <div id="dynamic-bg" class="dynamic-bg"></div>
     <div id="hover-bg" class="dynamic-bg hover-layer"></div>
 
     <!-- Flash Messages -->
