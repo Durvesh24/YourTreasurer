@@ -3,6 +3,7 @@ from flask_mail import Mail, Message
 from werkzeug.security import generate_password_hash, check_password_hash
 import os, re, threading, ssl, certifi
 from pymongo import MongoClient
+from bson.objectid import ObjectId
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -326,9 +327,11 @@ def my_expenses():
         except Exception as e:
             print(f"[DB] Dummy seeding error: {e}")
 
-    play_coins = session.pop('play_coins', False)
+    play_coins   = session.pop('play_coins', False)
+    play_crumple = session.pop('play_crumple', False)
     return render_template('expenses.html', user=user,
-                           categories=EXPENSE_CATEGORIES, expenses=expenses, play_coins=play_coins)
+                           categories=EXPENSE_CATEGORIES, expenses=expenses, 
+                           play_coins=play_coins, play_crumple=play_crumple)
 
 
 @app.route('/analysis')
@@ -428,6 +431,44 @@ def add_expense():
         print(f'[Expense] Error: {e}')
         flash('Something went wrong. Please try again.', 'error')
         return redirect(url_for('my_expenses'))
+
+
+@app.route('/delete_expense/<expense_id>', methods=['POST'])
+def delete_expense(expense_id):
+    """Task 4 — Expense Deletion logic."""
+    username = session.get('username')
+    if not username or mongo.db is None:
+        flash('Unauthorized or database offline.', 'error')
+        return redirect(url_for('my_profile'))
+
+    try:
+        exp = mongo.db.daily_expenses.find_one({'_id': ObjectId(expense_id), 'username': username})
+        if not exp:
+            flash('Expense not found or unauthorized.', 'error')
+            return redirect(url_for('my_expenses'))
+
+        mongo.db.daily_expenses.delete_one({'_id': ObjectId(expense_id)})
+
+        # Reverse the budget impact if it wasn't a loan
+        if not exp.get('is_loan', False):
+            user = mongo.db.users.find_one({'name': username})
+            if user:
+                amount    = float(exp.get('amount', 0.0))
+                new_spent = round(max(0.0, user.get('total_spent', 0.0) - amount), 2)
+                lim       = user.get('monthly_limit', 0.0)
+                new_bal   = round(lim - new_spent, 2)
+                mongo.db.users.update_one({'name': username}, {'$set': {
+                    'total_spent': new_spent, 'balance': new_bal, 'over_budget': new_bal < 0
+                }})
+
+        session['play_crumple'] = True
+        flash('Expense deleted successfully.', 'success')
+
+    except Exception as e:
+        print(f"[DB] Delete expense error: {e}")
+        flash('Could not delete expense.', 'error')
+
+    return redirect(url_for('my_expenses'))
 
 
 @app.route('/api/spend_data')

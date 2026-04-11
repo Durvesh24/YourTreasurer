@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/expenses.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
 </head>
-<body data-play-coins="{{ 'true' if play_coins else 'false' }}">
+<body data-play-coins="{{ 'true' if play_coins else 'false' }}" data-play-crumple="{{ 'true' if play_crumple else 'false' }}">
 
     <div class="brand-logo-top">
         <img src="{{ url_for('static', filename='images/logo.png') }}" alt="YourTreasurer">
@@ -199,13 +199,31 @@
                             <p class="exp-desc">{{ exp.description[:40] + '...' if exp.description and exp.description|length > 40 else (exp.description or 'No description provided') }}</p>
                             <p class="exp-date">{{ exp.expense_date.strftime('%b %d, %Y') if exp.expense_date else 'N/A' }}</p>
                         </div>
-                        <div class="exp-amount">&#8377;{{ '{:,.0f}'.format(exp.amount) }}</div>
+                        <div class="exp-action-group">
+                            <div class="exp-amount">&#8377;{{ '{:,.0f}'.format(exp.amount) }}</div>
+                            <button type="button" class="del-btn" onclick="openDeleteModal('{{ exp._id }}')">🗑️</button>
+                        </div>
                     </div>
                 {% endfor %}
                 </div>
             {% endif %}
         </div>
 
+    </div>
+    
+    <!-- Custom Delete Modal -->
+    <div id="delete-modal" class="modal-backdrop">
+        <div class="modal-card">
+            <div class="modal-icon">⚠️</div>
+            <h2 class="modal-title">Delete Expense?</h2>
+            <p class="modal-desc">This will permanently remove the record and reverse your budget automatically. This action cannot be undone.</p>
+            <div class="modal-actions">
+                <button type="button" class="modal-btn btn-cancel" onclick="closeDeleteModal()">Cancel</button>
+                <form id="delete-form" action="" method="POST" style="margin:0;">
+                    <button type="submit" class="modal-btn btn-danger">Yes, Delete</button>
+                </form>
+            </div>
+        </div>
     </div>
 
     <footer class="common-footer">YourTreasurer &copy; 2026 | Helping Hand</footer>
@@ -337,7 +355,26 @@
         }
     }
 
-    // COIN CLINK
+    // =========================================================
+    // MODAL & DELETE LOGIC
+    // =========================================================
+    const deleteModal = document.getElementById('delete-modal');
+    const deleteForm  = document.getElementById('delete-form');
+
+    function openDeleteModal(expenseId) {
+        deleteForm.action = '/delete_expense/' + expenseId;
+        deleteModal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+    function closeDeleteModal() {
+        deleteModal.classList.remove('active');
+        setTimeout(() => deleteForm.action = '', 300);
+        document.body.style.overflow = '';
+    }
+
+    // =========================================================
+    // AUDIO EFFECTS (COIN & CRUMPLE)
+    // =========================================================
     function playCoinSound() {
         try {
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -351,6 +388,58 @@
                 gain.gain.exponentialRampToValueAtTime(0.001, t+d+0.22);
                 osc.start(t+d); osc.stop(t+d+0.24);
             });
+        } catch(_) {}
+    }
+
+    function playCrumpleSound() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const duration = 0.45;
+            const bufferSize = ctx.sampleRate * duration;
+            const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            
+            // Generate Brown Noise (softer, deeper than white noise)
+            let lastOut = 0;
+            for (let i = 0; i < bufferSize; i++) {
+                const white = Math.random() * 2 - 1;
+                data[i] = (lastOut + (0.02 * white)) / 1.02;
+                lastOut = data[i];
+                data[i] *= 4.0; // compensate for mathematical volume drop
+            }
+            
+            const noise = ctx.createBufferSource();
+            noise.buffer = buffer;
+            
+            // Shape the noise to sound papery (Mid emphasis, high cut)
+            const bandpass = ctx.createBiquadFilter();
+            bandpass.type = 'bandpass';
+            bandpass.frequency.value = 800; // woody, papery frequency
+            bandpass.Q.value = 0.7;
+            
+            // Tremolo LFO to simulate the microscopic "stutter" of crumpling
+            const lfo = ctx.createOscillator();
+            lfo.type = 'sine';
+            lfo.frequency.value = 35; // 35Hz stutter
+            
+            const lfoGain = ctx.createGain();
+            lfo.connect(lfoGain.gain);
+            
+            // Master volume envelope (Significantly softer!)
+            const gain = ctx.createGain();
+            gain.gain.setValueAtTime(0, ctx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.03); // Max volume is drastically reduced to 0.12
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+            
+            // Wiring it together
+            noise.connect(bandpass);
+            bandpass.connect(lfoGain);
+            lfoGain.connect(gain);
+            gain.connect(ctx.destination);
+            
+            noise.start(ctx.currentTime);
+            lfo.start(ctx.currentTime);
+            lfo.stop(ctx.currentTime + duration);
         } catch(_) {}
     }
 
@@ -377,6 +466,12 @@
             playCoinSound();
             launchCoinRain();
         }
+        if (document.body.dataset.playCrumple === 'true') {
+            playCrumpleSound();
+            // Optional: force open history tab if a deletion occurred
+            setMode('history');
+        }
+        
         setTimeout(() => {
             document.querySelectorAll('.flash-item').forEach(el => {
                 el.style.transition = 'opacity 0.4s, transform 0.4s';

@@ -65,22 +65,22 @@ html, body {
     z-index: 1;
 }
 
-/* Animated light sweep shimmer */
+/* Animated light sweep shimmer (changed to opacity pulse for 60FPS performance) */
 .dynamic-bg::after {
     content: '';
     position: absolute; inset: 0; z-index: 2;
     background: linear-gradient(
         125deg,
-        transparent 30%, rgba(255,255,255,.04) 50%, transparent 70%
+        transparent 30%, rgba(255,255,255,.03) 50%, transparent 70%
     );
-    background-size: 300% 300%;
-    animation: lightSweep 14s ease-in-out infinite;
+    animation: lightPulse 10s ease-in-out infinite alternate;
     pointer-events: none;
+    will-change: opacity;
 }
 
-@keyframes lightSweep {
-    0%,100% { background-position: 0% 0%; }
-    50%      { background-position: 100% 100%; }
+@keyframes lightPulse {
+    0%   { opacity: 0.3; }
+    100% { opacity: 1; }
 }
 
 /* Hover background crossfade layer (nav) */
