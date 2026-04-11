@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/expenses.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
 </head>
-<body>
+<body data-play-coins="{{ 'true' if play_coins else 'false' }}">
 
     <div class="brand-logo-top">
         <img src="{{ url_for('static', filename='images/logo.png') }}" alt="YourTreasurer">
@@ -33,7 +33,10 @@
         </div>
     </nav>
 
-    <div id="dynamic-bg" class="dynamic-bg" style="background-image: url('{{ url_for('static', filename='images/bg.svg') }}');"></div>
+    <style>
+        #dynamic-bg { background-image: url("{{ url_for('static', filename='images/bg.svg') }}"); }
+    </style>
+    <div id="dynamic-bg" class="dynamic-bg"></div>
     <div id="hover-bg" class="dynamic-bg hover-layer"></div>
 
     <!-- Coin Rain -->
@@ -66,7 +69,16 @@
             {% endif %}
         </header>
 
-        <div class="form-panel">
+        <!-- Mode Switcher -->
+        <div class="mode-switcher-wrap">
+            <div class="mode-switcher">
+                <div class="mode-slider" id="mode-slider"></div>
+                <button type="button" class="mode-btn active" id="mode-btn-entry" onclick="setMode('entry')">➕ New Entry</button>
+                <button type="button" class="mode-btn" id="mode-btn-history" onclick="setMode('history')">📜 Spend History</button>
+            </div>
+        </div>
+
+        <div class="form-panel" id="panel-entry">
 
             <form id="expense-form" action="/add_expense" method="POST" novalidate>
 
@@ -157,6 +169,41 @@
                 </button>
 
             </form>
+        </div> <!-- end form-panel -->
+
+        <div class="history-panel" id="panel-history" style="display: none;">
+            {% if not expenses %}
+                <div class="empty-state">
+                    <span class="empty-icon">🪙</span>
+                    <p class="empty-text">Your vault is empty.<br>Record an expense to see it here.</p>
+                </div>
+            {% else %}
+                <div class="history-grid">
+                {% for exp in expenses %}
+                    <div class="expense-card">
+                        <div class="exp-icon">
+                            {% if exp.category == 'Educational' %}🎓
+                            {% elif exp.category == 'Lifestyle' %}🛍️
+                            {% elif exp.category == 'Healthy Food' %}🥗
+                            {% elif exp.category == 'Junk Food' %}🍔
+                            {% elif exp.category == 'Hostel Rent' %}🏢
+                            {% elif exp.category == 'Travelling' %}🚂
+                            {% else %}📄{% endif %}
+                        </div>
+                        <div class="exp-details">
+                            <h3 class="exp-title">{{ exp.category }}
+                                {% if exp.is_loan %}
+                                <span class="badge loan-badge">Lent to {{ exp.friend_name }}</span>
+                                {% endif %}
+                            </h3>
+                            <p class="exp-desc">{{ exp.description[:40] + '...' if exp.description and exp.description|length > 40 else (exp.description or 'No description provided') }}</p>
+                            <p class="exp-date">{{ exp.expense_date.strftime('%b %d, %Y') if exp.expense_date else 'N/A' }}</p>
+                        </div>
+                        <div class="exp-amount">&#8377;{{ '{:,.0f}'.format(exp.amount) }}</div>
+                    </div>
+                {% endfor %}
+                </div>
+            {% endif %}
         </div>
 
     </div>
@@ -265,6 +312,31 @@
         document.getElementById('submit-btn').disabled = true;
     });
 
+    // ═══════════════════════════════════════════════════
+    // MODE SWITCHER (Entry vs History)
+    // ═══════════════════════════════════════════════════
+    function setMode(mode) {
+        const btnEntry   = document.getElementById('mode-btn-entry');
+        const btnHistory = document.getElementById('mode-btn-history');
+        const pnlEntry   = document.getElementById('panel-entry');
+        const pnlHistory = document.getElementById('panel-history');
+        const slider     = document.getElementById('mode-slider');
+
+        if (mode === 'entry') {
+            btnEntry.classList.add('active');
+            btnHistory.classList.remove('active');
+            pnlEntry.style.display = 'block';
+            pnlHistory.style.display = 'none';
+            slider.style.transform = 'translateY(-50%) translateX(0)';
+        } else {
+            btnHistory.classList.add('active');
+            btnEntry.classList.remove('active');
+            pnlEntry.style.display = 'none';
+            pnlHistory.style.display = 'block';
+            slider.style.transform = 'translateY(-50%) translateX(100%)';
+        }
+    }
+
     // COIN CLINK
     function playCoinSound() {
         try {
@@ -301,7 +373,7 @@
     }
 
     window.addEventListener('DOMContentLoaded', () => {
-        if ({{ 'true' if play_coins else 'false' }}) {
+        if (document.body.dataset.playCoins === 'true') {
             playCoinSound();
             launchCoinRain();
         }

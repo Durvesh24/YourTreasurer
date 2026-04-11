@@ -285,12 +285,50 @@ def logout():
 
 @app.route('/my_expenses')
 def my_expenses():
-    """Task 2 — Expense entry page."""
+    """Task 2 & 3 — Expense entry and history page."""
     username   = session.get('username')
-    user       = mongo.db.users.find_one({'name': username}, {'password': 0}) if mongo.db is not None else None
+    if mongo.db is None:
+        return render_template('expenses.html', user=None, categories=EXPENSE_CATEGORIES, expenses=[])
+
+    user = mongo.db.users.find_one({'name': username}, {'password': 0})
+    
+    # Task 3: Real-Time spend history with auto-seeding
+    expenses = list(mongo.db.daily_expenses.find({'username': username}).sort('expense_date', -1))
+    
+    # Auto-seed minimum 8 dummy expenses if none exist (per Competition Rule Task 3)
+    if not expenses:
+        from datetime import timedelta
+        now = datetime.utcnow()
+        dummy_data = [
+            {'username': username, 'category': 'Educational', 'amount': 1200.0, 'description': 'Textbooks bundle', 'expense_date': now - timedelta(days=1), 'is_loan': False, 'created_at': now},
+            {'username': username, 'category': 'Hostel Rent', 'amount': 5000.0, 'description': 'Monthly rent', 'expense_date': now - timedelta(days=2), 'is_loan': False, 'created_at': now},
+            {'username': username, 'category': 'Junk Food', 'amount': 350.0, 'description': 'Late night pizza', 'expense_date': now - timedelta(days=3), 'is_loan': False, 'created_at': now},
+            {'username': username, 'category': 'Travelling', 'amount': 800.0, 'description': 'Train ticket home', 'expense_date': now - timedelta(days=5), 'is_loan': False, 'created_at': now},
+            {'username': username, 'category': 'Healthy Food', 'amount': 450.0, 'description': 'Fruits and groceries', 'expense_date': now - timedelta(days=6), 'is_loan': False, 'created_at': now},
+            {'username': username, 'category': 'Lifestyle', 'amount': 1500.0, 'description': 'New sneakers', 'expense_date': now - timedelta(days=8), 'is_loan': False, 'created_at': now},
+            {'username': username, 'category': 'Other', 'amount': 200.0, 'description': 'Stationery supplies', 'expense_date': now - timedelta(days=10), 'is_loan': False, 'created_at': now},
+            {'username': username, 'category': 'Lifestyle', 'amount': 500.0, 'description': 'Movie ticket', 'expense_date': now - timedelta(days=12), 'is_loan': True, 'friend_name': 'Rahul', 'friend_email': 'rahul@example.com', 'relationship': 'Classmate', 'loan_status': 'pending', 'created_at': now}
+        ]
+        try:
+            mongo.db.daily_expenses.insert_many(dummy_data)
+            
+            # Recalculate total spent against the balance so the budget matches the seeds
+            total_dummy_spent = sum(d['amount'] for d in dummy_data if not d['is_loan'])
+            if user:
+                new_spent = round(user.get('total_spent', 0.0) + total_dummy_spent, 2)
+                lim       = user.get('monthly_limit', 0.0)
+                new_bal   = round(lim - new_spent, 2)
+                mongo.db.users.update_one({'name': username}, {'$set': {
+                    'total_spent': new_spent, 'balance': new_bal, 'over_budget': new_bal < 0
+                }})
+            
+            expenses = list(mongo.db.daily_expenses.find({'username': username}).sort('expense_date', -1))
+        except Exception as e:
+            print(f"[DB] Dummy seeding error: {e}")
+
     play_coins = session.pop('play_coins', False)
     return render_template('expenses.html', user=user,
-                           categories=EXPENSE_CATEGORIES, play_coins=play_coins)
+                           categories=EXPENSE_CATEGORIES, expenses=expenses, play_coins=play_coins)
 
 
 @app.route('/analysis')
