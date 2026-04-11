@@ -189,9 +189,29 @@
                     <p class="empty-text">Your vault is empty.<br>Record an expense to see it here.</p>
                 </div>
             {% else %}
+                <!-- Stats Summary Bar -->
+                <div class="history-stats-bar">
+                    <div class="stat-chip">
+                        <span class="stat-value">{{ history_stats.count }}</span>
+                        <span class="stat-label">Entries</span>
+                    </div>
+                    <div class="stat-chip">
+                        <span class="stat-value">&#8377;{{ '{:,.0f}'.format(history_stats.total) }}</span>
+                        <span class="stat-label">Total Spent</span>
+                    </div>
+                    <div class="stat-chip">
+                        <span class="stat-value">&#8377;{{ '{:,.0f}'.format(history_stats.biggest) }}</span>
+                        <span class="stat-label">Biggest</span>
+                    </div>
+                    <div class="stat-chip">
+                        <span class="stat-value">{{ history_stats.loans }}</span>
+                        <span class="stat-label">Loans Given</span>
+                    </div>
+                </div>
+
                 <div class="history-grid">
                 {% for exp in expenses %}
-                    <div class="expense-card">
+                    <div class="expense-card cat-{{ exp.category | lower | replace(' ', '-') }}">
                         <div class="exp-icon">
                             {% if exp.category == 'Educational' %}🎓
                             {% elif exp.category == 'Lifestyle' %}🛍️
@@ -202,13 +222,16 @@
                             {% else %}📄{% endif %}
                         </div>
                         <div class="exp-details">
-                            <h3 class="exp-title">{{ exp.category }}
+                            <h3 class="exp-title">
+                                <span class="cat-badge cat-badge-{{ exp.category | lower | replace(' ', '-') }}">{{ exp.category }}</span>
                                 {% if exp.is_loan %}
-                                <span class="badge loan-badge">Lent to {{ exp.friend_name }}</span>
+                                <span class="badge loan-status-badge {% if exp.loan_status == 'paid' %}loan-paid{% else %}loan-pending{% endif %}">
+                                    {% if exp.loan_status == 'paid' %}✅ Paid Back{% else %}🔴 Pending{% endif %}
+                                </span>
                                 {% endif %}
                             </h3>
-                            <p class="exp-desc">{{ exp.description[:40] + '...' if exp.description and exp.description|length > 40 else (exp.description or 'No description provided') }}</p>
-                            <p class="exp-date">{{ exp.expense_date.strftime('%b %d, %Y') if exp.expense_date else 'N/A' }}</p>
+                            <p class="exp-desc">{{ exp.description[:45] + '...' if exp.description and exp.description|length > 45 else (exp.description or 'No description provided') }}</p>
+                            <p class="exp-date">{{ exp.expense_date.strftime('%b %d, %Y') if exp.expense_date else 'N/A' }}{% if exp.is_loan %} · Lent to <strong>{{ exp.friend_name }}</strong>{% endif %}</p>
                         </div>
                         <div class="exp-action-group">
                             <div class="exp-amount">&#8377;{{ '{:,.0f}'.format(exp.amount) }}</div>
