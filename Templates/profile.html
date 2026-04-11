@@ -15,6 +15,25 @@
         <img src="{{ url_for('static', filename='images/logo.png') }}" alt="YourTreasurer Logo">
     </div>
 
+    <!-- Nav Menu -->
+    <button class="menu-trigger" id="menu-btn"><span>&#9776; Menu</span></button>
+    <div class="menu-backdrop" id="menu-backdrop"></div>
+
+    <nav id="side-nav" class="side-nav">
+        <button class="close-btn" id="close-btn">&times;</button>
+        <div class="nav-links">
+            <a href="/" data-bg="{{ url_for('static', filename='images/bg.svg') }}">Home</a>
+            <a href="/my_profile" data-bg="{{ url_for('static', filename='images/profile.jpg') }}">My Profile</a>
+            <a href="/my_expenses" data-bg="{{ url_for('static', filename='images/expenses.avif') }}">My Expenses</a>
+            <a href="/analysis" data-bg="{{ url_for('static', filename='images/Analysis.jpg') }}">Analysis</a>
+            <a href="/interval_spend" data-bg="{{ url_for('static', filename='images/interval.jpg') }}">Interval Spend</a>
+            <a href="/about_us" data-bg="{{ url_for('static', filename='images/aboutus.png') }}">About Us</a>
+            {% if session.get('username') %}
+            <a href="/logout" class="nav-logout">Logout</a>
+            {% endif %}
+        </div>
+    </nav>
+
     <!-- Dynamic Background -->
     <style> #dynamic-bg { background-image: url("{{ url_for('static', filename='images/bg.svg') }}"); } </style>
     <div id="dynamic-bg" class="dynamic-bg"></div>
@@ -33,6 +52,59 @@
 
     <!-- Gateway Card -->
     <div class="gateway-wrapper">
+        {% if user %}
+        <div class="gateway-card profile-dashboard-card" id="gateway-card">
+            <div class="gateway-header">
+                <div class="lock-icon" id="lock-icon" style="font-size: 2.5rem; margin-bottom: 12px; animation: none;">👤</div>
+                <h1 class="gateway-title">Your Profile</h1>
+                <p class="gateway-subtitle">{{ user.email }}</p>
+            </div>
+            
+            <div class="profile-details-grid">
+                <div class="detail-item">
+                    <span class="detail-label">Name</span>
+                    <span class="detail-value">{{ user.name }}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Entries Logged</span>
+                    <span class="detail-value">{{ expense_count }}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Total Spent</span>
+                    <span class="detail-value">&#8377;{{ '{:,.2f}'.format(user.total_spent) }}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Current Balance</span>
+                    <span class="detail-value">&#8377;{{ '{:,.2f}'.format(user.balance) }}</span>
+                </div>
+            </div>
+
+            <div class="budget-update-section">
+                <h3 class="budget-update-title">Update Monthly Budget</h3>
+                <form action="/update_budget" method="POST" class="budget-update-form">
+                    <div class="input-group">
+                        <div class="input-wrapper">
+                            <span class="input-icon">💰</span>
+                            <input type="number" id="new_budget" name="new_budget" min="100" placeholder="New budget" value="{{ user.monthly_limit }}" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="gateway-btn update-btn">
+                        <span class="btn-text">Update Limit</span>
+                        <span class="btn-icon">✏️</span>
+                    </button>
+                </form>
+            </div>
+
+            <div class="profile-actions-wrapper">
+                <a href="/export_data" class="export-btn">📥 Export Vault Data</a>
+                <div class="action-row">
+                    <a href="/logout" class="logout-btn">Log Out</a>
+                    <button type="button" class="delete-trigger-btn" onclick="openDeleteModal()">🗑️ Delete Vault</button>
+                </div>
+            </div>
+
+        </div>
+        {% else %}
         <div class="gateway-card" id="gateway-card">
 
             <!-- Header -->
@@ -133,12 +205,29 @@
             </form>
 
         </div>
+        {% endif %}
     </div>
 
     <!-- Footer -->
     <footer class="common-footer">
         YourTreasurer &copy; 2026 | Helping Hand
     </footer>
+
+    <!-- Delete Confirmation Modal (Hidden by Default) -->
+    <div id="delete-modal" class="modal-backdrop-custom">
+        <div class="modal-card-custom">
+            <h2 class="modal-warning-title">⚠️ Are you absolutely sure?</h2>
+            <p class="modal-desc">This completely erases your entire identity. All transaction histories, receipts, and loans will be <strong>permanently destroyed</strong>. This cannot be undone.</p>
+            <p class="modal-type-instruction">Type <strong>DELETE</strong> below to confirm.</p>
+            <form action="/delete_account" method="POST" id="delete-form">
+                <input type="text" name="confirm_text" id="confirm-delete-text" class="modal-input-custom" placeholder="Type DELETE here" autocomplete="off" oninput="checkDeleteInput()">
+                <div class="modal-buttons-row">
+                    <button type="button" class="modal-cancel-btn" onclick="closeDeleteModal()">Cancel</button>
+                    <button type="submit" id="modal-submit-btn" class="modal-submit-btn" disabled>Destroy Vault</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <!-- Validation + Chime Script -->
     <script>
@@ -228,27 +317,31 @@
         });
 
         // ── Form submit — validate before sending to server ───────────────
-        document.getElementById('form-login').addEventListener('submit', function(e) {
-            const nameOk = validateNameField('login-name');
-            const passOk = validatePasswordField('login-password');
-            if (!nameOk || !passOk) { e.preventDefault(); return; }
-            // Show loading state on button
-            const btn = document.getElementById('login-btn');
-            btn.innerHTML = '<span class="btn-text">Unlocking...</span> <span class="btn-icon">⏳</span>';
-            btn.disabled = true;
-        });
+        const formLogin = document.getElementById('form-login');
+        if (formLogin) {
+            formLogin.addEventListener('submit', function(e) {
+                const nameOk = validateNameField('login-name');
+                const passOk = validatePasswordField('login-password');
+                if (!nameOk || !passOk) { e.preventDefault(); return; }
+                const btn = document.getElementById('login-btn');
+                btn.innerHTML = '<span class="btn-text">Unlocking...</span> <span class="btn-icon">⏳</span>';
+                btn.disabled = true;
+            });
+        }
 
-        document.getElementById('form-register').addEventListener('submit', function(e) {
-            const nameOk   = validateNameField('reg-name');
-            const passOk   = validatePasswordField('reg-password');
-            const emailOk  = validateEmailField('reg-email');
-            const budgetOk = validateBudgetField('reg-limit');
-            if (!nameOk || !passOk || !emailOk || !budgetOk) { e.preventDefault(); return; }
-            // Show loading state
-            const btn = document.getElementById('register-btn');
-            btn.innerHTML = '<span class="btn-text">Creating Vault...</span> <span class="btn-icon">⏳</span>';
-            btn.disabled = true;
-        });
+        const formRegister = document.getElementById('form-register');
+        if (formRegister) {
+            formRegister.addEventListener('submit', function(e) {
+                const nameOk   = validateNameField('reg-name');
+                const passOk   = validatePasswordField('reg-password');
+                const emailOk  = validateEmailField('reg-email');
+                const budgetOk = validateBudgetField('reg-limit');
+                if (!nameOk || !passOk || !emailOk || !budgetOk) { e.preventDefault(); return; }
+                const btn = document.getElementById('register-btn');
+                btn.innerHTML = '<span class="btn-text">Creating Vault...</span> <span class="btn-icon">⏳</span>';
+                btn.disabled = true;
+            });
+        }
 
         // ═══════════════════════════════════════════════════
         // TAB SWITCHER
@@ -308,6 +401,39 @@
         }
 
         // ═══════════════════════════════════════════════════
+        // NAVIGATION MENU LOGIC
+        // ═══════════════════════════════════════════════════
+        const menuBtn     = document.getElementById('menu-btn');
+        const closeBtn    = document.getElementById('close-btn');
+        const sideNav     = document.getElementById('side-nav');
+        const backdrop    = document.getElementById('menu-backdrop');
+        const hoverBg     = document.getElementById('hover-bg');
+
+        let menuOpen = false;
+        function toggleMenu() {
+            menuOpen = !menuOpen;
+            sideNav.style.right = menuOpen ? '0' : '-350px';
+            backdrop.classList.toggle('active');
+            document.body.style.overflow = menuOpen ? 'hidden' : '';
+            if (!menuOpen) hoverBg.style.opacity = '0';
+        }
+        menuBtn.addEventListener('click', toggleMenu);
+        closeBtn.addEventListener('click', toggleMenu);
+        backdrop.addEventListener('click', toggleMenu);
+        document.querySelectorAll('.nav-links a').forEach(link => {
+            link.addEventListener('mouseenter', () => {
+                const bg = link.dataset.bg;
+                if (bg) {
+                    hoverBg.style.backgroundImage = `url(${bg})`;
+                    hoverBg.style.opacity = '1';
+                }
+            });
+            link.addEventListener('mouseleave', () => {
+                hoverBg.style.opacity = '0';
+            });
+        });
+
+        // ═══════════════════════════════════════════════════
         // ON LOAD — flash handling + chime
         // ═══════════════════════════════════════════════════
         window.addEventListener('DOMContentLoaded', () => {
@@ -330,6 +456,34 @@
                 });
             }, 5000);
         });
+
+        // ═══════════════════════════════════════════════════
+        // DELETE ACCOUNT MODAL LOGIC
+        // ═══════════════════════════════════════════════════
+        const deleteModal = document.getElementById('delete-modal');
+        const deleteInput = document.getElementById('confirm-delete-text');
+        const deleteSubmit = document.getElementById('modal-submit-btn');
+
+        function openDeleteModal() {
+            if(deleteModal) {
+                deleteModal.style.display = 'flex';
+                deleteInput.value = '';
+                deleteSubmit.disabled = true;
+                setTimeout(() => deleteInput.focus(), 100);
+            }
+        }
+
+        function closeDeleteModal() {
+            if(deleteModal) {
+                deleteModal.style.display = 'none';
+            }
+        }
+
+        function checkDeleteInput() {
+            if(deleteInput) {
+                deleteSubmit.disabled = (deleteInput.value !== 'DELETE');
+            }
+        }
     </script>
 </body>
 </html>
