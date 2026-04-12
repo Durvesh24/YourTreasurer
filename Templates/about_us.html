@@ -46,6 +46,14 @@
             left: 0;
             color: var(--navy-dark);
         }
+        @media (max-width: 600px) {
+            .about-section {
+                padding: 24px;
+                margin: 80px 15px 40px;
+            }
+            .about-title { font-size: 1.8rem; }
+            .about-text { font-size: 1rem; }
+        }
     </style>
 </head>
 <body>
@@ -110,8 +118,72 @@
         closeBtn.addEventListener('click', toggleMenu);
         backdrop.addEventListener('click', toggleMenu);
     </script>
-    {% if session.get('username') %}
-    <a href="/my_expenses" class="global-fab" title="Add New Expense">+</a>
+    <button class="global-fab" onclick="const m=document.getElementById('global-expense-modal'); if(m.style.display==='none'||!m.style.display) m.style.display='block'; else m.style.display='none';" title="Quick Log Expense" style="border:none; cursor:pointer;">+</button>
+
+    <!-- Floating Quick Popover -->
+    <div id="global-expense-modal" style="display:none; position:fixed; bottom:95px; right:30px; width:300px; background:rgba(30,41,59,0.95); padding:20px; border-radius:20px; border:1px solid rgba(255,255,255,0.1); z-index:9999; box-shadow: 0 15px 40px rgba(0,0,0,0.6); backdrop-filter:blur(16px); animation: popUpFab 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);">
+        <button onclick="document.getElementById('global-expense-modal').style.display='none'" style="position:absolute; top:12px; right:15px; background:transparent; border:none; color:#94a3b8; font-size:1.4rem; cursor:pointer; line-height:1;">&times;</button>
+        <h3 style="color:white; margin:0 0 15px; font-family:'Inter'; font-size:1.05rem; font-weight:600; padding-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.05); text-align:left;">⚡ Quick Expense</h3>
+        <form onsubmit="handleGlobalQuickLog(event)" style="display:flex; flex-direction:column; gap:10px;">
+            <input type="text" id="g-ql-desc" placeholder="What did you buy?" required style="background:rgba(15,23,42,0.8); border:1px solid rgba(255,255,255,0.08); padding:10px; border-radius:10px; color:white; font-family:'Inter'; outline:none; font-size:0.9rem;">
+            <input type="number" id="g-ql-amount" placeholder="Amount (₹)" min="1" step="0.01" required style="background:rgba(15,23,42,0.8); border:1px solid rgba(255,255,255,0.08); padding:10px; border-radius:10px; color:white; font-family:'Inter'; outline:none; font-size:0.9rem;">
+            <select id="g-ql-cat" required style="background:rgba(15,23,42,0.8); border:1px solid rgba(255,255,255,0.08); padding:10px; border-radius:10px; color:white; font-family:'Inter'; outline:none; font-size:0.9rem;">
+                <option value="Lifestyle">Lifestyle</option>
+                <option value="Educational">Educational</option>
+                <option value="Healthy Food">Healthy Food</option>
+                <option value="Junk Food">Junk Food</option>
+                <option value="Travelling">Travelling</option>
+                <option value="Other">Other</option>
+            </select>
+            <button type="submit" id="g-ql-submit" style="background:linear-gradient(135deg, #3b82f6, #2563eb); color:white; border:none; padding:10px; border-radius:10px; font-weight:bold; cursor:pointer; font-family:'Inter'; transition:all 0.2s; margin-top:5px; font-size:0.95rem;">Record Expense</button>
+        </form>
+    </div>
+    <style>@keyframes popUpFab { 0% { opacity:0; transform:translateY(30px) scale(0.9); } 100% { opacity:1; transform:translateY(0) scale(1); } }</style>
+
+    <script>
+    async function handleGlobalQuickLog(e) {
+        e.preventDefault();
+        const btn = document.getElementById('g-ql-submit');
+        const desc = document.getElementById('g-ql-desc');
+        const amt = document.getElementById('g-ql-amount');
+        const cat = document.getElementById('g-ql-cat');
+        
+        btn.disabled = true; btn.innerHTML = '⏳ Processing...';
+        
+        try {
+            const formData = new FormData();
+            formData.append('description', desc.value);
+            formData.append('amount', amt.value);
+            formData.append('category', cat.value);
+
+            const res = await fetch('/add_expense', {
+                method: 'POST',
+                headers: { 'Accept': 'application/json' },
+                body: formData
+            });
+            const data = await res.json();
+            
+            if (data.success) {
+                btn.innerHTML = '✅ Saved!';
+                btn.style.background = '#10b981';
+                setTimeout(() => {
+                    document.getElementById('global-expense-modal').style.display = 'none';
+                    desc.value = ''; amt.value = '';
+                    btn.innerHTML = 'Record Expense';
+                    btn.style.background = 'linear-gradient(135deg, #3b82f6, #2563eb)';
+                    btn.disabled = false;
+                    // window.location.reload(); 
+                }, 800);
+            } else {
+                alert("Error: " + data.error);
+                btn.disabled = false; btn.innerHTML = 'Record Expense';
+            }
+        } catch (err) {
+            console.error(err);
+            btn.disabled = false; btn.innerHTML = 'Record Expense';
+        }
+    }
+    </script>
     {% endif %}
 </body>
 </html>

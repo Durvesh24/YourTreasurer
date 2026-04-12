@@ -398,3 +398,15 @@ body.analysis-page {
     45%  { transform: scale(1.04); }
     100% { transform: scale(1); }
 }
+
+/* ── Mobile Overrides ───────────────────────────────────────── */
+@media (max-width: 600px) {
+    .analysis-page .page-container { padding: 80px 15px 100px; }
+    .chart-glass-panel, .insights-glass-panel, .breakdown-section { padding: 20px 15px; }
+    .chart-wrapper { height: 280px; }
+    .analysis-title { font-size: 1.6rem; }
+    .insight-card { flex-direction: row; flex-wrap: wrap; }
+    .pulse-ring { width: 90px; height: 90px; }
+    .breakdown-table th, .breakdown-table td { padding: 10px 8px; font-size: 13px; }
+    .bar-track { width: 80px; }
+}

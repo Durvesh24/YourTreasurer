@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>404 - Page Not Found | YourTreasurer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/Style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@700;900&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body {
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #040914;
+        }
+        #dynamic-bg {
+            background-image: url("{{ url_for('static', filename='images/bg.svg') }}");
+            opacity: 0.3;
+        }
+        .error-card {
+            text-align: center;
+            z-index: 10;
+            padding: 40px;
+            background: rgba(15, 23, 42, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 24px;
+            backdrop-filter: blur(16px);
+            max-width: 500px;
+            width: 90%;
+            animation: floatUp 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+        }
+        @keyframes floatUp {
+            from { opacity: 0; transform: translateY(40px) scale(0.9); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .error-code {
+            font-family: 'Poppins', sans-serif;
+            font-size: clamp(5rem, 15vw, 8rem);
+            font-weight: 900;
+            margin: 0;
+            line-height: 1;
+            background: linear-gradient(135deg, #ef4444, #f97316);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 10px 30px rgba(239, 68, 68, 0.3);
+            animation: pulse-glow 3s infinite alternate;
+        }
+        @keyframes pulse-glow {
+            from { filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0.2)); }
+            to { filter: drop-shadow(0 0 25px rgba(239, 68, 68, 0.6)); }
+        }
+        .error-title {
+            color: #f8fafc;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin: 10px 0 15px;
+            font-family: 'Poppins', sans-serif;
+        }
+        .error-desc {
+            color: #94a3b8;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-bottom: 30px;
+            font-family: 'Inter', sans-serif;
+        }
+        .btn-home {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            color: white;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 1rem;
+            font-family: 'Inter', sans-serif;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+        }
+        .btn-home:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.6);
+        }
+    </style>
+</head>
+<body>
+    <div id="dynamic-bg" class="dynamic-bg"></div>
+    <div class="error-card">
+        <h1 class="error-code">404</h1>
+        <h2 class="error-title">Lost in the Vault?</h2>
+        <p class="error-desc">The page you're looking for doesn't exist or has been moved to a different drawer in the campus vault.</p>
+        <a href="/" class="btn-home">⬅ Return Home</a>
+    </div>
+</body>
+</html>

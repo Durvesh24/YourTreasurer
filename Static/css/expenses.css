@@ -839,3 +839,82 @@ body { overflow-y: auto !important; }
     margin-top: 4px;
 }
 .fab-submit-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+.fab-submit-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+/* ── Gap 2: Slide-Up Card Animation (Task 3) ─────────────────── */
+@keyframes slideUpCard {
+    from { opacity: 0; transform: translateY(22px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Missing 4: Empty State float animation ──────────────────── */
+@keyframes floatBob {
+    0%, 100% { transform: translateY(0); }
+    50%       { transform: translateY(-10px); }
+}
+
+/* ── Mobile First Responsive Overhaul (Missing 3) ────────────── */
+@media (max-width: 768px) {
+    .page-container {
+        padding: 80px 12px 120px;
+    }
+    .page-header {
+        flex-direction: column;
+        gap: 10px;
+    }
+    .balance-chip {
+        width: 100%;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .history-stats-bar {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+    }
+    .stat-chip { padding: 10px 8px; }
+    .stat-value { font-size: 0.85rem; }
+    .stat-label { font-size: 0.6rem; }
+
+    .form-panel { padding: 20px 16px 24px; }
+    .form-row-2 { grid-template-columns: 1fr; }
+    .form-row-2 .flex2 { grid-column: span 1; }
+
+    .expense-card {
+        padding: 14px 14px;
+        gap: 12px;
+    }
+    .exp-icon {
+        width: 42px; height: 42px;
+        font-size: 1.3rem;
+        border-radius: 12px;
+    }
+    .exp-title { font-size: 0.88rem; }
+    .exp-desc  { font-size: 0.75rem; }
+    .exp-date  { font-size: 0.67rem; }
+    .exp-amount { font-size: 1.05rem; }
+
+    .fab-drawer {
+        right: 12px; left: 12px; width: auto;
+        bottom: 90px;
+    }
+    .fab-btn {
+        bottom: 20px; right: 20px;
+        width: 52px; height: 52px;
+        font-size: 24px;
+    }
+
+    .search-filter-bar { flex-direction: column; }
+    .filter-select-wrap select { width: 100%; }
+
+    .mode-switcher { max-width: 100%; }
+    .mode-btn { font-size: 0.8rem; padding: 10px 0; }
+}
+
+@media (max-width: 480px) {
+    .page-title { font-size: 1.4rem; }
+    .history-stats-bar { grid-template-columns: repeat(2, 1fr); }
+    .modal-card { padding: 24px 16px; }
+    .modal-actions { flex-direction: column; }
+}
+

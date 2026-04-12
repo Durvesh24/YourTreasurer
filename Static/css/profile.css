@@ -434,3 +434,13 @@ body.profile-page { overflow-y: auto !important; }
     padding: 18px;
     background: rgba(9,22,52,0.4);
 }
+
+/* ── Extended Mobile Responsiveness ─────────────────────────── */
+@media (max-width: 768px) {
+    .gateway-wrapper { padding: 80px 15px 40px; }
+    .profile-dashboard-card { max-width: 100% !important; padding: 24px 20px; }
+    .profile-details-grid { gap: 10px; }
+    .detail-item { padding: 12px; flex-direction: column; align-items: flex-start; gap: 4px; }
+    .export-btn { font-size: 0.85rem; padding: 10px; }
+    .action-row .logout-btn, .delete-trigger-btn { font-size: 0.85rem; padding: 10px; }
+}

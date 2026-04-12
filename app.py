@@ -85,6 +85,15 @@ with app.app_context():
     else:
         print("[DB] No DB connection — skipping indexes.")
 
+@app.before_request
+def ensure_db_connection():
+    # If the app couldn't connect initially, try reconnecting on each user request
+    if mongo.db is None:
+        try:
+            mongo.connect(_mongo_uri)
+        except Exception:
+            pass
+
 
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5 MB
 
@@ -497,7 +506,11 @@ def trigger_budget_alert(user, limit, balance, spent, category=None):
 
 @app.route('/')
 def home():
-    """Public landing page."""
+    """Public landing page & Logged-In Dashboard (Task 14)."""
+    if 'username' in session and mongo.db is not None:
+        user = mongo.db.users.find_one({'name': session['username']}, {'password': 0})
+        if user:
+            return render_template('index.html', user=user)
     return render_template('index.html')
 
 
@@ -1020,13 +1033,16 @@ def pay_recurring(record_id):
                 {'_id': ObjectId(record_id)},
                 {'$set': {'due_date': new_due_date}}
             )
-            flash(f'Payment submitted! Auto-rolled "{rec["title"]}" to exactly 1 month later.', 'success')
+            if request.headers.get('Accept') != 'application/json':
+                flash(f'Payment submitted! Auto-rolled "{rec["title"]}" to exactly 1 month later.', 'success')
         else:
             mongo.db.recurring_payments.delete_one({'_id': ObjectId(record_id)})
-            flash(f'Payment submitted! Tracked your liability "{rec["title"]}" and removed it.', 'success')
+            if request.headers.get('Accept') != 'application/json':
+                flash(f'Payment submitted! Tracked your liability "{rec["title"]}" and removed it.', 'success')
             
         if request.headers.get('Accept') == 'application/json':
-            return jsonify({'success': True, 'action': 'rolled' if rec.get('auto_roll', False) else 'deleted'})
+            new_date_str = new_due_date.strftime('%b %d, %Y') if 'new_due_date' in locals() else ''
+            return jsonify({'success': True, 'action': 'rolled' if rec.get('auto_roll', False) else 'deleted', 'new_date': new_date_str})
             
     except Exception as e:
         print("Error paying recurring:", e)
@@ -1160,19 +1176,25 @@ def add_expense():
 
         session['play_coins'] = True
         
-        # Flash messages
-        if is_loan:
-            flash(f'Loan of Rs.{amount:,.2f} to {request.form.get("friend_name", "friend")} recorded.', 'success')
-        else:
-            flash(f'Rs.{amount:,.2f} tracked under {category}.', 'success')
-            
-        if not is_loan and alert_msg:
-            flash(alert_msg, alert_cat)
+        # Flash messages (only for non-ajax)
+        if request.headers.get('Accept') != 'application/json':
+            if is_loan:
+                flash(f'Loan of Rs.{amount:,.2f} to {request.form.get("friend_name", "friend")} recorded.', 'success')
+            else:
+                flash(f'Rs.{amount:,.2f} tracked under {category}.', 'success')
+                
+            if not is_loan and alert_msg:
+                flash(alert_msg, alert_cat)
+
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'success': True, 'new_total': new_spent})
 
         return redirect(url_for('my_expenses'))
 
     except Exception as e:
         print(f'[Expense] Error: {e}')
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'success': False, 'error': str(e)})
         flash('Something went wrong. Please try again.', 'error')
         return redirect(url_for('my_expenses'))
 
@@ -1305,8 +1327,7 @@ def timeline_data():
 
 @app.errorhandler(404)
 def page_not_found(error):
-    flash('Page not found.', 'warning')
-    return redirect(url_for('home'))
+    return render_template('404.html'), 404
 
 
 @app.errorhandler(413)
