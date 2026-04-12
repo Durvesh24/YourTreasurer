@@ -493,7 +493,10 @@ def my_profile():
                 return redirect(url_for('my_profile'))
 
             # 30-day cycle reset
-            start_date = user.get('start_date', datetime.utcnow())
+            start_date = user.get('start_date')
+            if not start_date:
+                start_date = datetime.utcnow()
+                
             if (datetime.utcnow() - start_date).days >= 30:
                 try:
                     mongo.db.monthly_archives.insert_one({
@@ -574,6 +577,41 @@ def logout():
     session.clear()
     flash(f'Goodbye, {username}! You have been logged out.', 'success')
     return redirect(url_for('my_profile'))
+
+
+@app.route('/change_password', methods=['POST'])
+def change_password():
+    """Feature 18: Secure password change with current password verification."""
+    if 'username' not in session:
+        return redirect(url_for('my_profile'))
+
+    username   = session['username']
+    current_pw = request.form.get('current_password', '').strip()
+    new_pw     = request.form.get('new_password', '').strip()
+    confirm_pw = request.form.get('confirm_password', '').strip()
+
+    if not current_pw or not new_pw or not confirm_pw:
+        flash('All password fields are required.', 'error')
+        return redirect(url_for('my_profile'))
+
+    if new_pw != confirm_pw:
+        flash('New passwords do not match. Please try again.', 'error')
+        return redirect(url_for('my_profile'))
+
+    if len(new_pw) < 8:
+        flash('New password must be at least 8 characters.', 'error')
+        return redirect(url_for('my_profile'))
+
+    user = mongo.db.users.find_one({'name': username})
+    if not user or not check_password_hash(user['password'], current_pw):
+        flash('Current password is incorrect.', 'error')
+        return redirect(url_for('my_profile'))
+
+    new_hash = generate_password_hash(new_pw, method='pbkdf2:sha256', salt_length=16)
+    mongo.db.users.update_one({'name': username}, {'$set': {'password': new_hash}})
+    flash('Password updated successfully! Your vault is now more secure. 🔒', 'success')
+    return redirect(url_for('my_profile'))
+
 
 
 @app.route('/export_data')
@@ -678,7 +716,32 @@ def my_expenses():
 
 @app.route('/analysis')
 def analysis():
+    """Task 8: Aggregation Dashboard rendering."""
+    if 'username' not in session: return redirect(url_for('my_profile'))
     return render_template('analysis.html')
+
+@app.route('/api/expense_breakdown')
+def expense_breakdown():
+    """Task 8 Aggregation Pipeline: Offload heavy grouping math to MongoDB natively."""
+    username = session.get('username')
+    if not username: return jsonify({'error': 'Unauthorized'}), 401
+    
+    # Use aggregation to sum expenses by category, masking 'is_loan' docs strictly as "Loans (Pending)"
+    pipeline = [
+        {"$match": {"username": username}},
+        {"$project": {
+            "amount": 1,
+            "category": {"$cond": [{"$eq": ["$is_loan", True]}, "Loans (Pending)", "$category"]}
+        }},
+        {"$group": {"_id": "$category", "total": {"$sum": "$amount"}}},
+        {"$sort": {"total": -1}}
+    ]
+    
+    results = list(mongo.db.daily_expenses.aggregate(pipeline))
+    labels = [r['_id'] for r in results]
+    data = [round(r['total'], 2) for r in results]
+    
+    return jsonify({"labels": labels, "data": data})
 
 
 @app.route('/interval_spend')
@@ -722,9 +785,18 @@ def add_expense():
             return redirect(url_for('my_expenses'))
 
         try:
-            expense_date = datetime.strptime(exp_date_str, '%Y-%m-%d') if exp_date_str else datetime.utcnow()
+            if exp_date_str:
+                parsed_dt = datetime.strptime(exp_date_str, '%Y-%m-%d')
+                local_now = datetime.now()
+                # If the user selects today's date, append the current time so it falls into correct hour bucket
+                if parsed_dt.date() == local_now.date():
+                    expense_date = datetime.combine(parsed_dt.date(), local_now.time())
+                else:
+                    expense_date = parsed_dt
+            else:
+                expense_date = datetime.now()
         except ValueError:
-            expense_date = datetime.utcnow()
+            expense_date = datetime.now()
 
         doc = {
             'username': username, 'category': category,
@@ -854,6 +926,39 @@ def spend_data():
     return jsonify({
         "categories": ["Educational","Lifestyle","Healthy Food","Junk Food","Hostel Rent","Travelling"],
         "amounts":    [1200, 500, 800, 300, 5000, 450]
+    })
+
+@app.route('/api/timeline_data')
+def timeline_data():
+    if 'username' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    from datetime import datetime, timedelta
+    username = session['username']
+    now = datetime.now()
+
+    
+    # Hourly
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    hourly_labels = [f"{h:02d}:00" for h in range(24)]
+    hourly_data = [0] * 24
+    
+    for exp in mongo.db.daily_expenses.find({'username': username, 'expense_date': {'$gte': today_start}}):
+        h = exp['expense_date'].hour
+        hourly_data[h] += round(float(exp.get('amount', 0)), 2)
+        
+    # Daily (last 30 days)
+    thirty_days_ago = today_start - timedelta(days=29)
+    daily_labels = [(thirty_days_ago + timedelta(days=d)).strftime('%b %d') for d in range(30)]
+    daily_data = [0] * 30
+    
+    for exp in mongo.db.daily_expenses.find({'username': username, 'expense_date': {'$gte': thirty_days_ago}}):
+        days_diff = (exp['expense_date'] - thirty_days_ago).days
+        if 0 <= days_diff < 30:
+            daily_data[days_diff] += round(float(exp.get('amount', 0)), 2)
+            
+    return jsonify({
+        'hourly': {'labels': hourly_labels, 'data': hourly_data},
+        'daily': {'labels': daily_labels, 'data': daily_data}
     })
 
 

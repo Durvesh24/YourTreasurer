@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics Dashboard - YourTreasurer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/Style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/expenses.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/analysis.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="analysis-body analysis-page">
+
+    <div class="brand-logo-top">
+        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="YourTreasurer">
+    </div>
+
+    <button class="menu-trigger" id="menu-btn"><span>&#9776; Menu</span></button>
+    <div class="menu-backdrop" id="menu-backdrop"></div>
+
+    <nav id="side-nav" class="side-nav">
+        <button class="close-btn" id="close-btn">&times;</button>
+        <div class="nav-links">
+            <a href="/" data-bg="{{ url_for('static', filename='images/bg.svg') }}">Home</a>
+            <a href="/my_profile" data-bg="{{ url_for('static', filename='images/profile.jpg') }}">My Profile</a>
+            <a href="/my_expenses" data-bg="{{ url_for('static', filename='images/expenses.avif') }}">My Expenses</a>
+            <a href="/analysis" data-bg="{{ url_for('static', filename='images/Analysis.jpg') }}" class="nav-active">Analysis</a>
+            <a href="/interval_spend" data-bg="{{ url_for('static', filename='images/interval.jpg') }}">Interval Spend</a>
+            <a href="/about_us" data-bg="{{ url_for('static', filename='images/aboutus.png') }}">About Us</a>
+            {% if session.get('username') %}
+            <a href="/logout" data-bg="{{ url_for('static', filename='images/bg.svg') }}" class="nav-logout">Logout</a>
+            {% endif %}
+        </div>
+    </nav>
+
+    <style>
+        #dynamic-bg { background-image: url("{{ url_for('static', filename='images/Analysis.jpg') }}"); filter: brightness(0.15) saturate(1.5); }
+    </style>
+    <div id="dynamic-bg" class="dynamic-bg"></div>
+    <div id="hover-bg" class="dynamic-bg hover-layer"></div>
+
+    <div class="page-container">
+        <header class="page-header" style="padding-top: 90px;">
+            <div>
+                <h1 class="analysis-title">Expenditure DNA</h1>
+                <p class="analysis-subtitle">Advanced algorithmic breakdown of your financial habits.</p>
+            </div>
+        </header>
+
+        <!-- ── Top Grid: Chart + Insights ── -->
+        <div class="analysis-grid">
+
+            <!-- Left: Doughnut Chart -->
+            <div class="chart-glass-panel">
+                <div class="chart-header">
+                    <h2>Category Breakdown</h2>
+                    <p>Hover slices for exact rupee amounts.</p>
+                </div>
+                <div class="chart-wrapper">
+                    <div id="chart-loader" class="skeleton-loader">
+                        <div class="spin-ring"></div>
+                        <p>Aggregating your data...</p>
+                    </div>
+                    <!-- Empty State (Feature 4) -->
+                    <div id="empty-state" class="empty-state" style="display:none;">
+                        <div class="empty-icon">📭</div>
+                        <h3>No Financial DNA Yet</h3>
+                        <p>Start logging expenses to see your spending breakdown come alive.</p>
+                        <a href="/my_expenses" class="empty-cta">Log Your First Expense →</a>
+                    </div>
+                    <!-- Pulse ring overlay — shown after chart spins in -->
+                    <div id="pulse-ring-el" class="pulse-ring-wrap" style="display:none;">
+                        <div class="pulse-ring"></div>
+                    </div>
+                    <canvas id="expenseChart" style="display: none;"></canvas>
+                </div>
+                
+                <!-- Task 10: Timeline Toggle Chart -->
+                <div class="timeline-section" id="timeline-section" style="display:none; margin-top:28px; border-top:1px solid rgba(255,255,255,0.06); padding-top:20px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                        <h3 style="font-size:15px; font-weight:600; color:#cbd5e1; margin:0;">Spending Velocity</h3>
+                        <div class="timeline-toggle" style="background:rgba(0,0,0,0.3); border-radius:8px; padding:3px; display:flex;">
+                            <button id="toggle-day" class="toggle-btn active" style="background:#3b82f6; color:#fff; border:none; border-radius:6px; padding:6px 14px; font-size:12px; font-weight:600; font-family:'Inter'; cursor:pointer; transition:0.2s;">Today</button>
+                            <button id="toggle-month" class="toggle-btn" style="background:transparent; color:#94a3b8; border:none; border-radius:6px; padding:6px 14px; font-size:12px; font-weight:600; font-family:'Inter'; cursor:pointer; transition:0.2s;">30 Days</button>
+                        </div>
+                    </div>
+                    <div style="height:220px; width:100%;">
+                        <canvas id="timelineChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Insight Cards -->
+            <div class="insights-glass-panel">
+                <div class="insight-card highlight-card">
+                    <div class="icon">🏆</div>
+                    <div class="details">
+                        <p class="label">Biggest Drain</p>
+                        <h3 id="highest-cat">—</h3>
+                    </div>
+                </div>
+                <div class="insight-card">
+                    <div class="icon">💼</div>
+                    <div class="details">
+                        <p class="label">Pending Loans</p>
+                        <h3 id="loans-stat">—</h3>
+                    </div>
+                </div>
+                <div class="insight-card">
+                    <div class="icon">📊</div>
+                    <div class="details">
+                        <p class="label">Spending Style</p>
+                        <h3 id="dominant-stat">—</h3>
+                    </div>
+                </div>
+                <div class="insight-card">
+                    <div class="icon">💰</div>
+                    <div class="details">
+                        <p class="label">Total Tracked</p>
+                        <h3 id="total-stat">—</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Feature 2: Category Breakdown Table ── -->
+        <div id="breakdown-table-section" class="breakdown-section" style="display:none;">
+            <div class="breakdown-header">
+                <h2>Ranked Category Ledger</h2>
+                <p>Click any column header to re-sort.</p>
+            </div>
+            <div class="table-wrapper">
+                <table id="breakdown-table" class="breakdown-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th class="sortable" data-col="category" onclick="sortTable('category')">Category <span class="sort-icon">⇅</span></th>
+                            <th class="sortable" data-col="amount" onclick="sortTable('amount')">Amount <span class="sort-icon">⇅</span></th>
+                            <th class="sortable" data-col="pct" onclick="sortTable('pct')">% of Total <span class="sort-icon">⇅</span></th>
+                            <th>Distribution</th>
+                        </tr>
+                    </thead>
+                    <tbody id="breakdown-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // ── Navigation ──
+        const menuBtn = document.getElementById("menu-btn"),
+              closeBtn = document.getElementById("close-btn"),
+              sideNav = document.getElementById("side-nav"),
+              menuBackdrop = document.getElementById("menu-backdrop"),
+              hoverBg = document.getElementById("hover-bg");
+        menuBtn.addEventListener("click", () => { sideNav.classList.add("open"); menuBackdrop.classList.add("open"); });
+        function clMenu() { sideNav.classList.remove("open"); menuBackdrop.classList.remove("open"); }
+        closeBtn.addEventListener("click", clMenu);
+        menuBackdrop.addEventListener("click", clMenu);
+        document.querySelectorAll(".nav-links a").forEach(l => {
+            l.addEventListener("mouseenter", e => {
+                const u = e.target.getAttribute("data-bg");
+                if (u) { hoverBg.style.backgroundImage = `url(${u})`; hoverBg.style.opacity = 1; }
+            });
+            l.addEventListener("mouseleave", () => { hoverBg.style.opacity = 0; });
+        });
+
+        // ── Constants ──
+        const COLORS  = ['#3b82f6','#ef4444','#10b981','#f59e0b','#8b5cf6',
+                         '#ec4899','#06b6d4','#f97316','#84cc16','#14b8a6'];
+        const ANIM_MS = 1400;   // chart spin duration
+        const FADE_MS = 600;    // center text fade-in after spin
+
+        // Script-scope state — the plugin accesses these via closure
+        let chartAnimStart = null;
+        let chartTotal     = 0;
+        let myChart        = null;
+        let hoveredIndex   = null;
+
+        // ── Center Text Plugin ──────────────────────────────────────────
+        // Phases:
+        //   0 → ANIM_MS       : chart spinning  → draw nothing
+        //   ANIM_MS → +FADE_MS: spin done       → fade in total/spotlight
+        //   after FADE_MS     : settled          → static total / spotlight on hover
+        const centerTextPlugin = {
+            id: 'centerText',
+            afterDraw(chart) {
+                const { ctx, chartArea } = chart;
+                if (!chartArea || !chartAnimStart) return;
+
+                const elapsed = Date.now() - chartAnimStart;
+                if (elapsed < ANIM_MS) return;   // ← Phase 0: nothing
+
+                const cx = chartArea.left + chartArea.width  / 2;
+                const cy = chartArea.top  + chartArea.height / 2;
+
+                // Alpha: 0→1 during FADE_MS window, then locked at 1
+                const alpha = Math.min((elapsed - ANIM_MS) / FADE_MS, 1);
+
+                ctx.save();
+                ctx.globalAlpha  = alpha;
+                ctx.textAlign    = 'center';
+                ctx.textBaseline = 'middle';
+
+                if (hoveredIndex !== null) {
+                    // ── Category Spotlight (on hover) ──
+                    const i     = hoveredIndex;
+                    const label = chart.data.labels[i];
+                    const value = chart.data.datasets[0].data[i];
+                    const color = COLORS[i % COLORS.length];
+                    const pct   = ((value / chartTotal) * 100).toFixed(1);
+
+                    ctx.fillStyle = color;
+                    ctx.font      = '600 11px Inter, sans-serif';
+                    ctx.fillText(label.toUpperCase(), cx, cy - 24);
+
+                    ctx.fillStyle = '#f8fafc';
+                    ctx.font      = 'bold 17px Inter, sans-serif';
+                    ctx.fillText('₹\u202f' + value.toLocaleString('en-IN'), cx, cy + 2);
+
+                    ctx.fillStyle = 'rgba(148,163,184,0.55)';
+                    ctx.font      = '400 11px Inter, sans-serif';
+                    ctx.fillText(pct + '% of spend', cx, cy + 22);
+                } else {
+                    // ── Static Total (default) ──
+                    ctx.fillStyle = 'rgba(100,116,139,0.8)';
+                    ctx.font      = '500 10px Inter, sans-serif';
+                    ctx.fillText('TOTAL SPENT', cx, cy - 18);
+
+                    ctx.fillStyle = '#f8fafc';
+                    ctx.font      = 'bold 19px Inter, sans-serif';
+                    ctx.fillText('₹\u202f' + chartTotal.toLocaleString('en-IN'), cx, cy + 6);
+                }
+
+                ctx.restore();
+            }
+        };
+
+        // ── Sortable Table ──────────────────────────────────────────────
+        let tableData = [];
+        let sortDir   = { category: 1, amount: -1, pct: -1 };
+        function sortTable(col) {
+            sortDir[col] *= -1;
+            tableData.sort((a, b) =>
+                col === 'category'
+                    ? sortDir[col] * a.category.localeCompare(b.category)
+                    : sortDir[col] * (a[col] - b[col])
+            );
+            renderTable();
+        }
+        function renderTable() {
+            const tbody = document.getElementById('breakdown-tbody');
+            tbody.innerHTML = '';
+            tableData.forEach((row, i) => {
+                tbody.innerHTML += `
+                <tr>
+                    <td class="rank-cell"><span class="rank-badge">${i + 1}</span></td>
+                    <td><span class="cat-dot" style="background:${row.color}"></span>${row.category}</td>
+                    <td class="amount-cell">₹ ${row.amount.toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
+                    <td class="pct-cell">${row.pct.toFixed(1)}%</td>
+                    <td class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100,row.pct).toFixed(1)}%;background:${row.color}"></div></div></td>
+                </tr>`;
+            });
+        }
+
+        // ── Main: Fetch → Render ────────────────────────────────────────
+        document.addEventListener('DOMContentLoaded', async () => {
+            const loader       = document.getElementById('chart-loader');
+            const canvas       = document.getElementById('expenseChart');
+            const emptyState   = document.getElementById('empty-state');
+            const tableSection = document.getElementById('breakdown-table-section');
+
+            try {
+                const res    = await fetch('/api/expense_breakdown');
+                const result = await res.json();
+                loader.style.display = 'none';
+
+                if (!res.ok || !result.labels || result.labels.length === 0) {
+                    emptyState.style.display = 'flex';
+                    return;
+                }
+
+                canvas.style.display = 'block';
+                const total = result.data.reduce((s, v) => s + v, 0);
+
+                // Set shared state BEFORE new Chart() — plugin reads these on first draw
+                chartTotal     = total;
+                chartAnimStart = Date.now();
+
+                myChart = new Chart(canvas, {
+                    type: 'doughnut',
+                    data: {
+                        labels: result.labels,
+                        datasets: [{
+                            data:            result.data,
+                            backgroundColor: COLORS.slice(0, result.labels.length),
+                            borderWidth:     3,
+                            borderColor:     '#0f172a',
+                            hoverOffset:     18
+                        }]
+                    },
+                    plugins: [centerTextPlugin],
+                    options: {
+                        responsive:          true,
+                        maintainAspectRatio: false,
+                        cutout:              '66%',
+                        layout:              { padding: 10 },
+                        // In Chart.js v4 hover updates must explicitly set the state variable
+                        onHover: (e, elements) => {
+                            const newHover = elements.length ? elements[0].index : null;
+                            if (hoveredIndex !== newHover) {
+                                hoveredIndex = newHover;
+                                myChart.draw(); // Force redraw plugin layer
+                            }
+                        },
+                        animation: {
+                            duration: ANIM_MS,
+                            easing: 'easeInOutQuart',
+                            animateRotate: true,
+                            animateScale: false
+                        },
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: {
+                                    color:         '#cbd5e1',
+                                    font:          { family: 'Inter', size: 13, weight: '500' },
+                                    padding:       18,
+                                    usePointStyle: true,
+                                    pointStyle:    'circle'
+                                }
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(15,23,42,0.95)',
+                                titleFont:       { family: 'Inter', size: 13 },
+                                bodyFont:        { family: 'Inter', size: 15, weight: 'bold' },
+                                padding:         14,
+                                cornerRadius:    10,
+                                callbacks: {
+                                    label: ctx =>
+                                        ' ₹ ' + ctx.raw.toLocaleString('en-IN',{minimumFractionDigits:2}) +
+                                        '  (' + ((ctx.raw/total)*100).toFixed(1) + '%)'
+                                }
+                            }
+                        }
+                    }
+                });
+
+                // ── Post-animation sequence (fires after spin ends) ──
+                setTimeout(() => {
+                    // 1. Drive the center fade-in (FADE_MS) via rAF — calls afterDraw each frame
+                    const fadeEnd = Date.now() + FADE_MS + 50;
+                    (function driveCenter() {
+                        try { myChart.draw(); } catch(_) {}
+                        if (Date.now() < fadeEnd) requestAnimationFrame(driveCenter);
+                    })();
+
+                    // 2. Chart pop-bounce — feels organic after spin completes
+                    canvas.classList.add('chart-pop');
+                    setTimeout(() => canvas.classList.remove('chart-pop'), 500);
+
+                    // 3. Show pulse ring
+                    document.getElementById('pulse-ring-el').style.display = 'flex';
+
+                    // 4. Staggered card slide-in
+                    document.querySelectorAll('.insight-card').forEach((card, i) => {
+                        setTimeout(() => card.classList.add('card-in'), i * 120);
+                    });
+
+                    // 5. Staggered stat blur-reveal
+                    ['highest-cat','loans-stat','dominant-stat','total-stat'].forEach((id, i) => {
+                        setTimeout(() => {
+                            const el = document.getElementById(id);
+                            if (el) el.classList.add('stat-in');
+                        }, i * 120 + 150);
+                    });
+                }, ANIM_MS);
+
+                // Populate insight card data (visible after stat-in animation)
+                const hiIdx = result.data.indexOf(Math.max(...result.data));
+                document.getElementById('highest-cat').textContent  = result.labels[hiIdx];
+                const loanIdx = result.labels.indexOf('Loans (Pending)');
+                document.getElementById('loans-stat').textContent   = loanIdx !== -1
+                    ? '₹ ' + result.data[loanIdx].toLocaleString('en-IN') : '₹ 0';
+                document.getElementById('dominant-stat').textContent = result.labels.length > 3
+                    ? 'Diversified 🌐' : result.labels.length > 1 ? 'Moderate ⚖️' : 'Concentrated 🎯';
+                document.getElementById('total-stat').textContent = '₹\u202f' + total.toLocaleString('en-IN');
+
+                // Table
+                tableData = result.labels.map((label, i) => ({
+                    category: label,
+                    amount:   result.data[i],
+                    pct:      (result.data[i] / total) * 100,
+                    color:    COLORS[i % COLORS.length]
+                }));
+                tableSection.style.display = 'block';
+                renderTable();
+
+                // ── Task 10: Timeline Chart ──
+                const tlRes = await fetch('/api/timeline_data');
+                if (tlRes.ok) {
+                    const tlData = await tlRes.json();
+                    document.getElementById('timeline-section').style.display = 'block';
+                    
+                    const tlCanvas = document.getElementById('timelineChart');
+                    const tlCtx = tlCanvas.getContext('2d');
+                    
+                    const gradient = tlCtx.createLinearGradient(0, 0, 0, 220);
+                    gradient.addColorStop(0, 'rgba(56, 189, 248, 0.3)');
+                    gradient.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
+                    
+                    let activeView = 'hourly';
+                    
+                    const tlChart = new Chart(tlCanvas, {
+                        type: 'line',
+                        data: {
+                            labels: tlData[activeView].labels,
+                            datasets: [{
+                                label: 'Spend',
+                                data: tlData[activeView].data,
+                                borderColor: '#38bdf8',
+                                backgroundColor: gradient,
+                                borderWidth: 2,
+                                tension: 0.4,
+                                fill: true,
+                                pointBackgroundColor: '#0f172a',
+                                pointBorderColor: '#38bdf8',
+                                pointBorderWidth: 2,
+                                pointRadius: 0,
+                                pointHoverRadius: 6,
+                                pointHitRadius: 15
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            interaction: {
+                                intersect: false,
+                                mode: 'index'
+                            },
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                    backgroundColor: 'rgba(15,23,42,0.95)',
+                                    titleFont: { family: 'Inter', size: 12, weight: '500', color: '#94a3b8' },
+                                    bodyFont: { family: 'Inter', size: 15, weight: 'bold', color: '#f8fafc' },
+                                    padding: 12,
+                                    cornerRadius: 8,
+                                    displayColors: false,
+                                    callbacks: {
+                                        label: ctx => '₹ ' + ctx.raw.toLocaleString('en-IN')
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    grid: { display: false },
+                                    border: { display: false },
+                                    ticks: { color: '#64748b', font: {family: 'Inter', size: 11}, maxTicksLimit: 7 }
+                                },
+                                y: {
+                                    grid: { color: 'rgba(255,255,255,0.04)' },
+                                    border: { display: false },
+                                    ticks: { 
+                                        color: '#64748b', 
+                                        font: {family: 'Inter', size: 11},
+                                        maxTicksLimit: 5,
+                                        callback: val => '₹' + (val >= 1000 ? (val/1000).toFixed(1)+'k' : val)
+                                    },
+                                    beginAtZero: true
+                                }
+                            }
+                        }
+                    });
+                    
+                    const btnDay = document.getElementById('toggle-day');
+                    const btnMonth = document.getElementById('toggle-month');
+                    
+                    function updateTimeline(view, activeBtn, inactiveBtn) {
+                        if (activeView === view) return;
+                        activeView = view;
+                        
+                        activeBtn.style.background = '#3b82f6';
+                        activeBtn.style.color = '#fff';
+                        
+                        inactiveBtn.style.background = 'transparent';
+                        inactiveBtn.style.color = '#94a3b8';
+                        
+                        tlChart.data.labels = tlData[view].labels;
+                        tlChart.data.datasets[0].data = tlData[view].data;
+                        tlChart.update();
+                    }
+                    
+                    btnDay.addEventListener('click', () => updateTimeline('hourly', btnDay, btnMonth));
+                    btnMonth.addEventListener('click', () => updateTimeline('daily', btnMonth, btnDay));
+                }
+
+            } catch (err) {
+                console.error('Analytics error:', err);
+                loader.innerHTML = '<p style="color:#ef4444;font-family:Inter;text-align:center">Failed to load analytics. Please refresh.</p>';
+            }
+        });
+    </script>
+    {% if session.get('username') %}
+    <a href="/my_expenses" class="global-fab" title="Add New Expense">+</a>
+    {% endif %}
+</body>
+</html>
