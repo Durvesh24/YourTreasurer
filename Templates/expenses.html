@@ -231,8 +231,18 @@
                 <div class="history-grid" id="history-grid">
                 {% for exp in expenses %}
                     <div class="expense-card cat-{{ exp.category | lower | replace(' ', '-') }}"
+                         onclick="openExpenseModal(this)"
+                         data-id="{{ exp._id }}"
                          data-search="{{ (exp.description or '') | lower }} {{ exp.category | lower }} {{ exp.friend_name | default('') | lower }}"
-                         data-cat="{{ 'Loans' if exp.is_loan else exp.category }}">
+                         data-cat="{{ exp.category }}"
+                         data-is-loan="{{ 'true' if exp.is_loan else 'false' }}"
+                         data-amount="{{ exp.amount }}"
+                         data-desc="{{ (exp.description or 'No description provided') | escape }}"
+                         data-date="{{ exp.expense_date.strftime('%b %d, %Y') if exp.expense_date else 'N/A' }}"
+                         data-loan-status="{{ exp.loan_status or '' }}"
+                         data-friend-name="{{ exp.friend_name | default('') | escape }}"
+                         data-friend-email="{{ exp.friend_email | default('') | escape }}"
+                         data-receipt-url="{{ exp.receipt_url | default('') | escape }}">
                         <div class="exp-icon">
                             {% if exp.category == 'Educational' %}🎓
                             {% elif exp.category == 'Lifestyle' %}🛍️
@@ -246,7 +256,7 @@
                             <h3 class="exp-title">
                                 <span class="cat-badge cat-badge-{{ exp.category | lower | replace(' ', '-') }}">{{ exp.category }}</span>
                                 {% if exp.is_loan %}
-                                <span class="badge loan-status-badge {% if exp.loan_status == 'paid' %}loan-paid{% else %}loan-pending{% endif %}">
+                                <span id="badge-{{ exp._id }}" class="badge loan-status-badge {% if exp.loan_status == 'paid' %}loan-paid{% else %}loan-pending{% endif %}">
                                     {% if exp.loan_status == 'paid' %}✅ Paid Back{% else %}🔴 Pending{% endif %}
                                 </span>
                                 {% endif %}
@@ -256,11 +266,8 @@
                         </div>
                         <div class="exp-action-group">
                             <div class="exp-amount">&#8377;{{ '{:,.0f}'.format(exp.amount) }}</div>
-                            <div class="exp-action-btns">
-                                {% if exp.receipt_url %}
-                                <button type="button" class="receipt-pill" onclick="openReceiptModal('{{ exp.receipt_url }}', '{{ exp.category }}', '{{ exp.expense_date.strftime('%b %d, %Y') if exp.expense_date else '' }}')" title="View Receipt">🧾</button>
-                                {% endif %}
-                                <button type="button" class="del-btn" onclick="openDeleteModal('{{ exp._id }}')">🗑️</button>
+                            <div class="exp-action-btns" style="font-size:1.2rem; display:flex; align-items:center; color:#94a3b8;">
+                                <span class="hover-arrow">➔</span>
                             </div>
                         </div>
                     </div>
@@ -271,6 +278,39 @@
 
     </div>
     
+    <!-- Universal Expense Configuration Modal -->
+    <div id="expense-modal" class="modal-backdrop">
+        <div class="modal-card" style="max-width: 450px;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:15px;">
+                <div>
+                    <h2 class="modal-title" id="exp-modal-title">Expense Details</h2>
+                    <p style="color:#64748b; font-size:0.9rem;" id="exp-modal-date"></p>
+                </div>
+                <button class="receipt-close-btn" onclick="closeExpenseModal()" style="position:static;">✕</button>
+            </div>
+            
+            <div style="background:#f8fafc; padding:20px; border-radius:12px; margin-bottom:20px; text-align:center; border: 1px solid #e2e8f0;">
+                <p style="margin:0; font-size:2.2rem; font-weight:800; color:#1e293b;" id="exp-modal-amount"></p>
+                <p style="margin:8px 0 0; color:#475569; font-weight:500;" id="exp-modal-desc"></p>
+            </div>
+            
+            <!-- Loan Information Block -->
+            <div id="exp-modal-loan-info" style="display:none; margin-bottom:20px; text-align:center; background:#f0fdf4; border:1px solid #bbf7d0; padding:15px; border-radius:10px;">
+                <p style="margin:0 0 5px; font-weight:700; color:#166534;">Loan to <span id="exp-modal-friend"></span></p>
+                <p style="margin:0 0 12px; font-size:0.85rem; color:#15803d;" id="exp-modal-email"></p>
+                <span id="exp-modal-badge" class="badge"></span>
+            </div>
+
+            <!-- Dynamic Actions -->
+            <div style="display:flex; flex-direction:column; gap:12px;" id="exp-modal-actions">
+                <button type="button" class="modal-btn" id="modal-remind-btn" style="background:#8b5cf6; color:white;" onclick="executeModalAction('remind')">✉️ Send Email Reminder</button>
+                <button type="button" class="modal-btn" id="modal-paid-btn" style="background:#10b981; color:white;" onclick="executeModalAction('paid')">✅ Mark as Paid in Full</button>
+                <button type="button" class="modal-btn" id="modal-receipt-btn" style="background:#3b82f6; color:white;" onclick="executeModalAction('receipt')">🧾 View Attached Receipt</button>
+                <button type="button" class="modal-btn btn-danger" onclick="executeModalAction('delete')">🗑️ Delete Record</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Custom Delete Modal -->
     <div id="delete-modal" class="modal-backdrop">
         <div class="modal-card">
@@ -519,6 +559,39 @@
         } catch(_) {}
     }
 
+    function playWhooshSound() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const duration = 0.6;
+            const bufferSize = ctx.sampleRate * duration;
+            const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            
+            for (let i = 0; i < bufferSize; i++) { data[i] = Math.random() * 2 - 1; }
+            
+            const noise = ctx.createBufferSource();
+            noise.buffer = buffer;
+            
+            const bandpass = ctx.createBiquadFilter();
+            bandpass.type = 'bandpass';
+            bandpass.frequency.setValueAtTime(100, ctx.currentTime);
+            bandpass.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + duration * 0.5);
+            bandpass.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + duration);
+            bandpass.Q.value = 1.5;
+            
+            const gain = ctx.createGain();
+            gain.gain.setValueAtTime(0, ctx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + duration * 0.2);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+            
+            noise.connect(bandpass);
+            bandpass.connect(gain);
+            gain.connect(ctx.destination);
+            
+            noise.start(ctx.currentTime);
+        } catch(e) {}
+    }
+
     function playCrumpleSound() {
         try {
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -571,6 +644,43 @@
         } catch(_) {}
     }
 
+    function playKaChingSound() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const t = ctx.currentTime;
+            
+            // Drawer opening metal slide (White noise burst)
+            const bSize = ctx.sampleRate * 0.1;
+            const b = ctx.createBuffer(1, bSize, ctx.sampleRate);
+            const d = b.getChannelData(0);
+            for(let i=0; i<bSize; i++) d[i] = Math.random()*2-1;
+            const noise = ctx.createBufferSource();
+            noise.buffer = b;
+            const noiseFilter = ctx.createBiquadFilter();
+            noiseFilter.type = 'highpass'; noiseFilter.frequency.value = 5000;
+            const noiseGain = ctx.createGain();
+            noiseGain.gain.setValueAtTime(0.3, t);
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, t+0.08);
+            noise.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(ctx.destination);
+            noise.start(t);
+            
+            // Bell rings (Two high frequencies)
+            const osc1 = ctx.createOscillator(), osc2 = ctx.createOscillator();
+            const gainNode = ctx.createGain();
+            osc1.type = 'sine'; osc2.type = 'sine';
+            osc1.frequency.setValueAtTime(3200, t + 0.08);
+            osc2.frequency.setValueAtTime(4500, t + 0.13);
+            
+            gainNode.gain.setValueAtTime(0, t);
+            gainNode.gain.linearRampToValueAtTime(0.6, t + 0.13);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, t + 0.9);
+            
+            osc1.connect(gainNode); osc2.connect(gainNode); gainNode.connect(ctx.destination);
+            osc1.start(t+0.08); osc2.start(t+0.13);
+            osc1.stop(t+0.9); osc2.stop(t+0.9);
+        } catch(e) {}
+    }
+
     // COIN RAIN
     function launchCoinRain() {
         const rain = document.getElementById('coin-rain');
@@ -599,7 +709,148 @@
             // Optional: force open history tab if a deletion occurred
             setMode('history');
         }
+    });
+
+    // =========================================================
+    // EXPENSE MODAL CONTROLLER
+    // =========================================================
+    const expenseModalEl = document.getElementById('expense-modal');
+    let currentExpenseData = null; // Global reference for active modal actions
+    
+    function openExpenseModal(cardEl) {
+        // Collect attributes from the DOM dataset
+        const d = cardEl.dataset;
+        currentExpenseData = d;
         
+        // Populate standard details
+        document.getElementById('exp-modal-title').textContent = d.cat;
+        document.getElementById('exp-modal-date').textContent  = d.date;
+        document.getElementById('exp-modal-amount').innerHTML  = '&#8377;' + Number(d.amount).toLocaleString('en-IN');
+        document.getElementById('exp-modal-desc').textContent  = d.desc;
+        
+        const actionBlock = document.getElementById('exp-modal-actions');
+        actionBlock.innerHTML = ''; // wipe old buttons
+        
+        // Handle Loan Specific Logic
+        const loanInfo = document.getElementById('exp-modal-loan-info');
+        if (d.isLoan === 'true') {
+            document.getElementById('exp-modal-friend').textContent = d.friendName;
+            document.getElementById('exp-modal-email').textContent  = d.friendEmail;
+            
+            const badge = document.getElementById('exp-modal-badge');
+            if(d.loanStatus === 'paid') {
+                badge.className = 'badge loan-status-badge loan-paid';
+                badge.innerHTML = '✅ Paid Back';
+            } else {
+                badge.className = 'badge loan-status-badge loan-pending';
+                badge.innerHTML = '🔴 Pending';
+                
+                // Inject premium Action Buttons dynamically for pending loans!
+                actionBlock.innerHTML += `<button type="button" class="modal-btn" id="modal-remind-btn" style="background:#8b5cf6; color:white; font-weight:600;" onclick="executeModalAction('remind')">✉️ Send Email Reminder</button>`;
+                actionBlock.innerHTML += `<button type="button" class="modal-btn" id="modal-paid-btn" style="background:#10b981; color:white; font-weight:600;" onclick="executeModalAction('paid')">✅ Mark as Paid in Full</button>`;
+            }
+            loanInfo.style.display = 'block';
+        } else {
+            loanInfo.style.display = 'none';
+        }
+        
+        // Standard Action Buttons
+        if (d.receiptUrl && d.receiptUrl.trim() !== '') {
+            actionBlock.innerHTML += `<button type="button" class="modal-btn" style="background:#3b82f6; color:white; font-weight:600;" onclick="window.open('${d.receiptUrl}', '_blank')">🧾 View Attached Receipt</button>`;
+        }
+        actionBlock.innerHTML += `<button type="button" class="modal-btn btn-danger" onclick="executeModalAction('delete')">🗑️ Delete Record</button>`;
+        
+        expenseModalEl.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+    
+    function closeExpenseModal() {
+        expenseModalEl.classList.remove('active');
+        document.body.style.overflow = '';
+        currentExpenseData = null;
+    }
+    
+    // Wire up backdrop clicking
+    expenseModalEl.addEventListener('click', function(e) {
+        if (e.target === this) closeExpenseModal();
+    });
+
+    async function executeModalAction(actionType) {
+        if (!currentExpenseData) return;
+        const id = currentExpenseData.id;
+        
+        if (actionType === 'delete') {
+            closeExpenseModal();
+            openDeleteModal(id);
+            return;
+        }
+        
+        if (actionType === 'remind') {
+            const btn = document.getElementById('modal-remind-btn');
+            btn.disabled = true; btn.innerHTML = '⏳ Sending Notification...';
+            try {
+                const response = await fetch('/api/remind_loan/' + id, { method: 'POST' });
+                const data = await response.json();
+                if(data.success) {
+                    playWhooshSound();
+                    btn.innerHTML = '✅ Reminder Sent Successfully!';
+                    btn.style.background = '#10b981';
+                    setTimeout(() => closeExpenseModal(), 1500);
+                } else {
+                    alert("Failed: " + data.error);
+                    btn.innerHTML = '✉️ Send Email Reminder';
+                    btn.disabled = false;
+                }
+            } catch(e) { btn.innerHTML = '✉️ Send Email Reminder'; btn.disabled = false; }
+            return;
+        }
+        
+        if (actionType === 'paid') {
+            const btn = document.getElementById('modal-paid-btn');
+            btn.disabled = true; btn.innerHTML = '⏳ Processing...';
+            try {
+                const response = await fetch('/api/mark_loan_paid/' + id, { method: 'POST' });
+                const data = await response.json();
+                if(data.success) {
+                    playKaChingSound();
+                    launchCoinRain();
+                    
+                    // Update Modal Interface
+                    const badge = document.getElementById('exp-modal-badge');
+                    badge.className = 'badge loan-status-badge loan-paid';
+                    badge.innerHTML = '✅ Paid Back';
+                    
+                    document.getElementById('modal-remind-btn')?.remove();
+                    btn.remove(); // Remove paid button
+                    
+                    // Natively update DOM elements beneath the modal
+                    const mainBadge = document.getElementById('badge-' + id);
+                    if(mainBadge) {
+                        mainBadge.className = 'badge loan-status-badge loan-paid';
+                        mainBadge.innerHTML = '✅ Paid Back';
+                    }
+                    
+                    // Dynamically update the Remaining Money header!
+                    if(data.new_balance !== undefined && data.new_balance !== null) {
+                        const balanceChip = document.querySelector('.chip-value');
+                        if(balanceChip) {
+                            balanceChip.innerHTML = '&#8377;' + Number(data.new_balance).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                        }
+                    }
+                    
+                    // Also update dataset to reflect memory!
+                    const domCard = document.querySelector(`.expense-card[data-id="${id}"]`);
+                    if(domCard) domCard.dataset.loanStatus = 'paid';
+                    
+                    setTimeout(() => closeExpenseModal(), 2000);
+                } else {
+                    alert("Failed: " + data.error);
+                    btn.innerHTML = '✅ Mark as Paid in Full';
+                    btn.disabled = false;
+                }
+            } catch(e) { btn.innerHTML = '✅ Mark as Paid in Full'; btn.disabled = false; }
+        }
+    }    
         setTimeout(() => {
             document.querySelectorAll('.flash-item').forEach(el => {
                 el.style.transition = 'opacity 0.4s, transform 0.4s';
@@ -607,7 +858,6 @@
                 setTimeout(() => el.remove(), 400);
             });
         }, 5000);
-    });
     // =========================================================
     // MODAL & DELETE LOGIC
     // =========================================================
