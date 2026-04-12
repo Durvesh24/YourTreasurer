@@ -95,6 +95,43 @@
                 </form>
             </div>
 
+            <!-- Feature 18: Password Change Section -->
+            <div class="security-section">
+                <button type="button" class="security-toggle" id="security-toggle" onclick="toggleSecurity()">
+                    <span>🔐 Change Password</span>
+                    <span class="security-chevron" id="security-chevron">▼</span>
+                </button>
+                <div class="security-form-wrap" id="security-form-wrap">
+                    <form action="/change_password" method="POST" class="security-form">
+                        <div class="input-group" style="margin-bottom:12px;">
+                            <label for="current_password" style="font-size:12px;color:rgba(186,230,253,0.5);letter-spacing:1px;text-transform:uppercase;">Current Password</label>
+                            <div class="input-wrapper">
+                                <span class="input-icon">🔑</span>
+                                <input type="password" id="current_password" name="current_password" placeholder="Your current password" required>
+                            </div>
+                        </div>
+                        <div class="input-group" style="margin-bottom:12px;">
+                            <label for="new_password" style="font-size:12px;color:rgba(186,230,253,0.5);letter-spacing:1px;text-transform:uppercase;">New Password</label>
+                            <div class="input-wrapper">
+                                <span class="input-icon">🆕</span>
+                                <input type="password" id="new_password" name="new_password" placeholder="Minimum 8 characters" required minlength="8">
+                            </div>
+                        </div>
+                        <div class="input-group" style="margin-bottom:16px;">
+                            <label for="confirm_password" style="font-size:12px;color:rgba(186,230,253,0.5);letter-spacing:1px;text-transform:uppercase;">Confirm New Password</label>
+                            <div class="input-wrapper">
+                                <span class="input-icon">✅</span>
+                                <input type="password" id="confirm_password" name="confirm_password" placeholder="Re-enter new password" required minlength="8">
+                            </div>
+                        </div>
+                        <button type="submit" class="gateway-btn update-btn" style="width:100%;">
+                            <span class="btn-text">Update Password</span>
+                            <span class="btn-icon">🔒</span>
+                        </button>
+                    </form>
+                </div>
+            </div>
+
             <div class="profile-actions-wrapper">
                 <a href="/export_data" class="export-btn">📥 Export Vault Data</a>
                 <div class="action-row">
@@ -102,6 +139,7 @@
                     <button type="button" class="delete-trigger-btn" onclick="openDeleteModal()">🗑️ Delete Vault</button>
                 </div>
             </div>
+
 
         </div>
         {% else %}
@@ -484,6 +522,17 @@
                 deleteSubmit.disabled = (deleteInput.value !== 'DELETE');
             }
         }
+
+        // Feature 18: Toggle Security/Password Section
+        function toggleSecurity() {
+            const wrap = document.getElementById('security-form-wrap');
+            const chevron = document.getElementById('security-chevron');
+            const isOpen = wrap.classList.toggle('open');
+            chevron.style.transform = isOpen ? 'rotate(180deg)' : '';
+        }
     </script>
+    {% if session.get('username') %}
+    <a href="/my_expenses" class="global-fab" title="Add New Expense">+</a>
+    {% endif %}
 </body>
 </html>

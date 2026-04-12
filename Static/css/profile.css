@@ -385,3 +385,52 @@ body.profile-page { overflow-y: auto !important; }
     .gateway-title { font-size: 1.55rem; }
     .lock-icon { font-size: 2.4rem; }
 }
+
+/* ── Feature 18: Security / Password Change Section ─────────── */
+.security-section {
+    margin-bottom: 20px;
+    border: 1px solid rgba(186,230,253,0.08);
+    border-radius: 14px;
+    overflow: hidden;
+}
+
+.security-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    background: rgba(15,32,64,0.6);
+    border: none;
+    color: rgba(186,230,253,0.7);
+    font-size: 14px;
+    font-weight: 600;
+    font-family: 'Poppins', sans-serif;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.security-toggle:hover {
+    background: rgba(28,77,141,0.4);
+    color: #bde8f5;
+}
+
+.security-chevron {
+    font-size: 12px;
+    transition: transform 0.3s ease;
+}
+
+.security-form-wrap {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.4s cubic-bezier(0.4,0,0.2,1);
+}
+
+.security-form-wrap.open {
+    max-height: 500px;
+}
+
+.security-form {
+    padding: 18px;
+    background: rgba(9,22,52,0.4);
+}

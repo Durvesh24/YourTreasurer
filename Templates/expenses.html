@@ -189,6 +189,25 @@
                     <p class="empty-text">Your vault is empty.<br>Record an expense to see it here.</p>
                 </div>
             {% else %}
+                <!-- Feature 14: Search + Filter Bar -->
+                <div class="search-filter-bar" id="search-filter-bar">
+                    <div class="search-input-wrap">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="expense-search" placeholder="Search by description or category..." autocomplete="off">
+                        <button class="search-clear" id="search-clear" style="display:none;" onclick="clearSearch()">✕</button>
+                    </div>
+                    <div class="filter-select-wrap">
+                        <select id="cat-filter">
+                            <option value="">All Categories</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat }}">{{ cat }}</option>
+                            {% endfor %}
+                            <option value="Loans">Loans</option>
+                        </select>
+                    </div>
+                </div>
+                <p id="search-result-count" class="search-result-count" style="display:none;"></p>
+
                 <!-- Stats Summary Bar -->
                 <div class="history-stats-bar">
                     <div class="stat-chip">
@@ -209,9 +228,11 @@
                     </div>
                 </div>
 
-                <div class="history-grid">
+                <div class="history-grid" id="history-grid">
                 {% for exp in expenses %}
-                    <div class="expense-card cat-{{ exp.category | lower | replace(' ', '-') }}">
+                    <div class="expense-card cat-{{ exp.category | lower | replace(' ', '-') }}"
+                         data-search="{{ (exp.description or '') | lower }} {{ exp.category | lower }} {{ exp.friend_name | default('') | lower }}"
+                         data-cat="{{ 'Loans' if exp.is_loan else exp.category }}">
                         <div class="exp-icon">
                             {% if exp.category == 'Educational' %}🎓
                             {% elif exp.category == 'Lifestyle' %}🛍️
@@ -629,6 +650,85 @@
         if (e.target === this) closeReceiptModal();
     });
 
+    // ── Feature 14: Live Search + Category Filter ──
+    const searchInput = document.getElementById('expense-search');
+    const catFilter = document.getElementById('cat-filter');
+    const clearBtn = document.getElementById('search-clear');
+    const resultCount = document.getElementById('search-result-count');
+    const allCards = document.querySelectorAll('#history-grid .expense-card');
+
+    function filterExpenses() {
+        if (!searchInput) return;
+        const q = searchInput.value.trim().toLowerCase();
+        const cat = catFilter ? catFilter.value : '';
+        clearBtn.style.display = q ? 'flex' : 'none';
+        let visible = 0;
+        allCards.forEach(card => {
+            const matchQ = !q || card.dataset.search.includes(q);
+            const matchCat = !cat || card.dataset.cat === cat;
+            const show = matchQ && matchCat;
+            card.style.display = show ? '' : 'none';
+            if (show) visible++;
+        });
+        if (q || cat) {
+            resultCount.style.display = 'block';
+            resultCount.textContent = `${visible} result${visible !== 1 ? 's' : ''} found`;
+        } else {
+            resultCount.style.display = 'none';
+        }
+    }
+
+    function clearSearch() {
+        if (searchInput) searchInput.value = '';
+        filterExpenses();
+        searchInput && searchInput.focus();
+    }
+
+    if (searchInput) searchInput.addEventListener('input', filterExpenses);
+    if (catFilter) catFilter.addEventListener('change', filterExpenses);
+
+    </script>
+
+    <!-- ── Feature 11: FAB Quick-Add Button ── -->
+    <button class="fab-btn" id="fab-btn" title="Quick Add Expense" onclick="toggleFab()">＋</button>
+
+    <div class="fab-drawer" id="fab-drawer">
+        <div class="fab-drawer-inner">
+            <div class="fab-drawer-header">
+                <h3>⚡ Quick Add Expense</h3>
+                <button class="fab-drawer-close" onclick="toggleFab()">✕</button>
+            </div>
+            <form action="/add_expense" method="POST" class="fab-form">
+                <select name="category" required class="fab-input">
+                    <option value="" disabled selected>Select Category</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat }}">{{ cat }}</option>
+                    {% endfor %}
+                </select>
+                <div class="fab-amount-row">
+                    <span class="fab-currency">₹</span>
+                    <input type="number" name="amount" placeholder="Amount" min="1" max="100000" step="0.01" required class="fab-input">
+                </div>
+                <input type="text" name="description" placeholder="Description (optional)" maxlength="120" class="fab-input">
+                <input type="hidden" name="expense_date" id="fab-date">
+                <button type="submit" class="fab-submit-btn">💾 Save Expense</button>
+            </form>
+        </div>
+    </div>
+    <div class="fab-overlay" id="fab-overlay" onclick="toggleFab()"></div>
+
+    <script>
+    // FAB logic
+    const fabBtn = document.getElementById('fab-btn');
+    const fabDrawer = document.getElementById('fab-drawer');
+    const fabOverlay = document.getElementById('fab-overlay');
+    document.getElementById('fab-date').value = today;
+
+    function toggleFab() {
+        fabDrawer.classList.toggle('open');
+        fabOverlay.classList.toggle('open');
+        fabBtn.classList.toggle('fab-active');
+    }
     </script>
 </body>
 </html>

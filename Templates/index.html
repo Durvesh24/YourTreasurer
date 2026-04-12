@@ -120,5 +120,8 @@
         });
     }, 4000);
     </script>
+    {% if session.get('username') %}
+    <a href="/my_expenses" class="global-fab" title="Add New Expense">+</a>
+    {% endif %}
 </body>
 </html>
