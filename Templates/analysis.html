@@ -285,6 +285,13 @@
                 canvas.style.display = 'block';
                 const total = result.data.reduce((s, v) => s + v, 0);
 
+                // Map specific shading directly based on Loan categories
+                const dynamicColors = result.labels.map((label, i) => {
+                    if (label === 'Loans (Pending)')   return 'rgba(245, 158, 11, 0.9)'; // Amber warning
+                    if (label === 'Loans (Paid Back)') return 'rgba(16, 185, 129, 0.9)'; // Emerald success
+                    return COLORS[i % COLORS.length];
+                });
+
                 // Set shared state BEFORE new Chart() — plugin reads these on first draw
                 chartTotal     = total;
                 chartAnimStart = Date.now();
@@ -295,7 +302,7 @@
                         labels: result.labels,
                         datasets: [{
                             data:            result.data,
-                            backgroundColor: COLORS.slice(0, result.labels.length),
+                            backgroundColor: dynamicColors,
                             borderWidth:     3,
                             borderColor:     '#0f172a',
                             hoverOffset:     18
@@ -381,9 +388,12 @@
                 // Populate insight card data (visible after stat-in animation)
                 const hiIdx = result.data.indexOf(Math.max(...result.data));
                 document.getElementById('highest-cat').textContent  = result.labels[hiIdx];
-                const loanIdx = result.labels.indexOf('Loans (Pending)');
-                document.getElementById('loans-stat').textContent   = loanIdx !== -1
-                    ? '₹ ' + result.data[loanIdx].toLocaleString('en-IN') : '₹ 0';
+
+                const loanPenIdx = result.labels.indexOf('Loans (Pending)');
+                const loanPdIdx  = result.labels.indexOf('Loans (Paid Back)');
+                const totalLoans = (loanPenIdx !== -1 ? result.data[loanPenIdx] : 0) + (loanPdIdx !== -1 ? result.data[loanPdIdx] : 0);
+                document.getElementById('loans-stat').textContent   = '₹ ' + totalLoans.toLocaleString('en-IN');
+                
                 document.getElementById('dominant-stat').textContent = result.labels.length > 3
                     ? 'Diversified 🌐' : result.labels.length > 1 ? 'Moderate ⚖️' : 'Concentrated 🎯';
                 document.getElementById('total-stat').textContent = '₹\u202f' + total.toLocaleString('en-IN');
@@ -393,7 +403,7 @@
                     category: label,
                     amount:   result.data[i],
                     pct:      (result.data[i] / total) * 100,
-                    color:    COLORS[i % COLORS.length]
+                    color:    dynamicColors[i]
                 }));
                 tableSection.style.display = 'block';
                 renderTable();

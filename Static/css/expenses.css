@@ -357,10 +357,14 @@ body { overflow-y: auto !important; }
     animation: cardSlideUp .5s cubic-bezier(.34,1.56,.64,1) forwards;
     transition: transform .2s, border-color .2s;
     will-change: transform, opacity;
+    cursor: pointer;
 }
 .expense-card:hover {
-    transform: translateY(-3px) !important; /* overrides transform from animation end */
+    transform: translateY(-3px) scale(1.01) !important; /* overrides transform from animation end */
     border-color: rgba(56,189,248,.3);
+}
+.expense-card:active {
+    transform: scale(0.98) !important;
 }
 
 /* Staggered load animation up to 20 items to clear inline Jinja IDE errors */

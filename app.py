@@ -256,6 +256,55 @@ def send_alert_email_async(to_email, username, tier, limit, balance, spent, cate
     except Exception as e:
         print(f"[Mail] Failed to send email to {to_email}. Error: {e}")
 
+def send_reminder_email_async(to_email, username, title, amount, due_date_str, days_left):
+    sender = os.environ.get('MAIL_USER', '')
+    password = os.environ.get('MAIL_PASS', '')
+    if not sender or not password or sender == 'your_email@gmail.com':
+        return
+
+    msg = EmailMessage()
+    msg['From'] = f"YourTreasurer Alerts <{sender}>"
+    msg['To'] = to_email
+    msg['Subject'] = f"📅 Payment Due Soon: {title} ({days_left} days left)!"
+
+    html = f"""
+    <html>
+    <body style="background-color:#f8fafc; margin:0; padding:30px; font-family:'Segoe UI', Tahoma, Arial, sans-serif;">
+        <div style="max-width:550px; margin:0 auto; background-color:#ffffff; border-radius:16px; padding:35px; border-top: 5px solid #ef4444; box-shadow: 0 10px 25px rgba(0,0,0,0.05);">
+            <h2 style="color:#ef4444; margin-top:0; font-size:12px; font-weight:800; letter-spacing:2px; text-transform:uppercase;">Recurring Liability Alert</h2>
+            <h1 style="color:#0f172a; font-size:24px; margin:10px 0 25px;">Upcoming Payment: <span style="color:#3b82f6;">{title}</span></h1>
+            
+            <p style="color:#475569; font-size:16px; line-height:1.6;">Hello <strong>{username}</strong>,<br>This is an automated reminder that your scheduled liability is due in <strong>{days_left} day(s)</strong>.</p>
+            
+            <div style="background-color:#f1f5f9; padding:20px; border-radius:12px; margin:30px 0; border: 1px solid #e2e8f0;">
+                <p style="margin:5px 0; color:#64748b; font-size:14px; text-transform:uppercase; letter-spacing:1px;">Amount Due</p>
+                <p style="margin:0; color:#0f172a; font-size:28px; font-weight:800;">₹{amount:,.2f}</p>
+                
+                <div style="height:1px; background-color:#cbd5e1; margin:15px 0;"></div>
+                
+                <p style="margin:5px 0; color:#64748b; font-size:12px; text-transform:uppercase; letter-spacing:1px;">Due Date</p>
+                <p style="margin:0; color:#ef4444; font-size:18px; font-weight:700;">{due_date_str}</p>
+            </div>
+            
+            <center>
+                <a href="http://127.0.0.1:5000/interval_spend" style="background-color:#38bdf8; color:#ffffff; padding:14px 30px; text-decoration:none; border-radius:30px; font-weight:bold; font-size:15px; display:inline-block; box-shadow: 0 4px 15px rgba(56,189,248,0.4);">Review & Pay</a>
+            </center>
+        </div>
+    </body>
+    </html>
+    """
+    msg.set_content(f"Upcoming Payment: {title} allows {days_left} days left. Amount: {amount}")
+    msg.add_alternative(html, subtype='html')
+
+    try:
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
+            server.login(sender, password)
+            server.send_message(msg)
+        print(f"[Mail] Reminder sent for {title} to {to_email}")
+    except Exception as e:
+        print(f"[Mail] Failed to send reminder. Error: {e}")
+
 def send_loan_handshake_async(to_email, friend_name, owner_name, amount, desc, receipt_url, bcc_email):
     """Task 7: Automated Loan Handshake. Sends a professional notification to the borrower."""
     sender = os.environ.get('MAIL_USER', '')
@@ -325,6 +374,51 @@ def send_loan_handshake_async(to_email, friend_name, owner_name, amount, desc, r
         print(f"[Handshake] Successfully sent loan email to {to_email}")
     except Exception as e:
         print(f"[Handshake] Failed to send to {to_email}. Error: {e}")
+
+def send_gentle_reminder_async(to_email, friend_name, owner_name, amount, desc):
+    """Task 13: Sends a gentle reminder HTML email asking for loan return."""
+    sender = os.environ.get('MAIL_USER', '')
+    password = os.environ.get('MAIL_PASS', '')
+    if not sender or not password: return
+
+    msg = EmailMessage()
+    msg['From'] = f"{owner_name} via YourTreasurer <{sender}>"
+    msg['To'] = to_email
+    msg['Subject'] = f"Friendly Reminder: Pending Balance for {desc}"
+
+    color = "#8b5cf6" # Friendly Purple
+    html = f"""
+    <html>
+    <body style="background-color:#f8fafc; color:#334155; font-family:'Helvetica Neue', sans-serif; padding:20px; line-height:1.6;">
+        <div style="max-width:600px; margin:0 auto; background-color:#ffffff; border-radius:12px; padding:30px; border-top: 6px solid {color}; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">
+            <div style="text-align:center; padding-bottom: 20px; border-bottom: 1px solid #e2e8f0;">
+                <h2 style="color:{color}; margin:0; letter-spacing:2px; font-size:13px; font-weight:800; text-transform:uppercase;">GENTLE REMINDER</h2>
+            </div>
+            
+            <p style="font-size:16px; margin-top:25px; color:#1e293b;">Hi <strong>{friend_name}</strong>,</p>
+            <p style="font-size:15px; color:#475569;">Hope you're having a great day! This is just a quick, friendly automated note from <strong>{owner_name}</strong> regarding the pending balance for <strong style="color:#0f172a;">{desc}</strong>.</p>
+            
+            <div style="background-color:#f5f3ff; padding:20px; border-radius:8px; margin:25px 0; border: 1px solid #ddd6fe; text-align:center;">
+                <p style="margin:0; color:#6d28d9; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:1px;">Pending Amount</p>
+                <p style="margin:8px 0 0 0; color:#5b21b6; font-size:28px; font-weight:800;">₹{amount:,.2f}</p>
+            </div>
+            
+            <p style="font-size:14px; color:#475569; text-align:center; margin-top:20px;">Whenever you get a chance, you can coordinate directly with {owner_name} to settle this. Thanks!</p>
+        </div>
+    </body>
+    </html>
+    """
+    msg.set_content(f"Reminder: Hi {friend_name}, please coordinate with {owner_name} to settle the ₹{amount} for {desc}.")
+    msg.add_alternative(html, subtype='html')
+
+    try:
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
+            server.login(sender, password)
+            server.send_message(msg)
+        print(f"[Handshake] Successfully sent gentle reminder to {to_email}")
+    except Exception as e:
+        print(f"[Handshake] Failed to send reminder to {to_email}. Error: {e}")
 
 def trigger_budget_alert(user, limit, balance, spent, category=None):
     """Checks budget thresholds, spawns a daemon thread for email, and returns flash message."""
@@ -653,6 +747,29 @@ def export_data():
         headers={"Content-Disposition": f"attachment;filename={username}_vault_backup.csv"}
     )
 
+def sync_user_ledger(username):
+    """Bulletproof accounting mathematically syncing non-loan expenses and PENDING loans naturally into the total_spent cache."""
+    user = mongo.db.users.find_one({'name': username})
+    if not user: return 0, 0
+    
+    # 1. Sum standard expenses
+    standard = list(mongo.db.daily_expenses.find({'username': username, 'is_loan': {'$ne': True}}))
+    sum_standard = sum(e.get('amount', 0) for e in standard)
+    
+    # 2. Sum pending loans (Because letting money go IS an expense until it's returned!)
+    pending = list(mongo.db.daily_expenses.find({'username': username, 'is_loan': True, 'loan_status': 'pending'}))
+    sum_pending = sum(e.get('amount', 0) for e in pending)
+    
+    total_effective_spent = round(sum_standard + sum_pending, 2)
+    new_bal = round(user.get('monthly_limit', 0.0) - total_effective_spent, 2)
+    
+    mongo.db.users.update_one({'name': username}, {'$set': {
+        'total_spent': total_effective_spent,
+        'balance': new_bal,
+        'over_budget': new_bal < 0
+    }})
+    return total_effective_spent, new_bal
+
 
 @app.route('/delete_account', methods=['POST'])
 def delete_account():
@@ -688,6 +805,12 @@ def my_expenses():
     if mongo.db is None:
         return render_template('expenses.html', user=None, categories=EXPENSE_CATEGORIES, expenses=[])
 
+    try:
+        # Dynamically guarantee the ledger sums perfectly before loading profile 
+        sync_user_ledger(username)
+    except:
+        pass
+        
     user = mongo.db.users.find_one({'name': username}, {'password': 0})
     
     # Task 3: Real-Time spend history with auto-seeding
@@ -699,11 +822,15 @@ def my_expenses():
     play_coins   = session.pop('play_coins', False)
     play_crumple = session.pop('play_crumple', False)
 
-    # History stats for the summary bar
+    # History stats for the summary bar (Updated to sync directly against the true total)
     non_loan_exps = [e for e in expenses if not e.get('is_loan', False)]
+    pending_loans = [e for e in expenses if e.get('is_loan', False) and e.get('loan_status') == 'pending']
+    
+    true_total = round(sum(e['amount'] for e in non_loan_exps) + sum(e['amount'] for e in pending_loans), 2)
+    
     history_stats = {
         'count':   len(expenses),
-        'total':   round(sum(e['amount'] for e in non_loan_exps), 2),
+        'total':   true_total,
         'biggest': round(max((e['amount'] for e in non_loan_exps), default=0), 2),
         'loans':   sum(1 for e in expenses if e.get('is_loan', False)),
     }
@@ -726,12 +853,21 @@ def expense_breakdown():
     username = session.get('username')
     if not username: return jsonify({'error': 'Unauthorized'}), 401
     
-    # Use aggregation to sum expenses by category, masking 'is_loan' docs strictly as "Loans (Pending)"
+    # Use aggregation to sum expenses by category, safely dropping paid loans entirely mathematically.
     pipeline = [
-        {"$match": {"username": username}},
+        {"$match": {
+            "username": username,
+            "loan_status": {"$ne": "paid"}
+        }},
         {"$project": {
             "amount": 1,
-            "category": {"$cond": [{"$eq": ["$is_loan", True]}, "Loans (Pending)", "$category"]}
+            "category": {
+                "$cond": [
+                    {"$eq": ["$is_loan", True]},
+                    {"$cond": [{"$eq": ["$loan_status", "paid"]}, "Loans (Paid Back)", "Loans (Pending)"]},
+                    "$category"
+                ]
+            }
         }},
         {"$group": {"_id": "$category", "total": {"$sum": "$amount"}}},
         {"$sort": {"total": -1}}
@@ -744,9 +880,174 @@ def expense_breakdown():
     return jsonify({"labels": labels, "data": data})
 
 
+from dateutil.relativedelta import relativedelta
+from datetime import datetime, timedelta
+
 @app.route('/interval_spend')
 def interval_spend():
-    return render_template('interval_spend.html')
+    """Task 11: Interval Spend Manager."""
+    if 'username' not in session: return redirect(url_for('my_profile'))
+    
+    if mongo.db is None:
+        flash('Database unavailable.', 'error')
+        return redirect(url_for('home'))
+        
+    username = session['username']
+    now = datetime.now()
+    
+    # Fetch recurring records
+    records_cursor = mongo.db.recurring_payments.find({'username': username}).sort('due_date', 1)
+    recurring = []
+    
+    for rec in records_cursor:
+        rec_due = rec.get('due_date')
+        remind_days = rec.get('reminder_days', 0)
+        
+        # Danger calculation for glowing red pulse border (Task 12 setup)
+        danger = False
+        days_left = 0
+        days_total = 30 # Assuming standard 30-day rolling subscriptions
+        if rec_due:
+            threshold_date = rec_due.date() - timedelta(days=remind_days)
+            if now.date() >= threshold_date:
+                danger = True
+            
+            # Mathematics for SVG Progress Visualization
+            delta = rec_due.date() - now.date()
+            days_left = max(0, delta.days)
+            if days_left > days_total: days_total = days_left # Graceful fallback for non-monthly items
+            
+        rec['is_danger']  = danger
+        rec['days_left']  = days_left
+        rec['days_total'] = days_total
+        recurring.append(rec)
+        
+    return render_template('interval_spend.html', recurring=recurring, current_date=now)
+
+@app.route('/add_recurring', methods=['POST'])
+def add_recurring():
+    if 'username' not in session: return redirect(url_for('my_profile'))
+    username = session['username']
+    
+    title = request.form.get('title', '').strip()
+    amount_str = request.form.get('amount', '').strip()
+    due_date_str = request.form.get('due_date', '').strip()
+    reminder_days_str = request.form.get('reminder_days', '0').strip()
+    auto_roll = request.form.get('auto_roll') == 'on'
+    
+    if not title or not amount_str or not due_date_str:
+        flash('All required fields must be filled.', 'error')
+        return redirect(url_for('interval_spend'))
+        
+    try:
+        amount = round(float(amount_str), 2)
+        if amount <= 0: raise ValueError
+    except:
+        flash('Invalid amount.', 'error')
+        return redirect(url_for('interval_spend'))
+        
+    try:
+        due_date = datetime.strptime(due_date_str, '%Y-%m-%d')
+        reminder_days = int(reminder_days_str)
+    except:
+        flash('Invalid date or reminder days.', 'error')
+        return redirect(url_for('interval_spend'))
+        
+    doc = {
+        'username': username,
+        'title': title,
+        'amount': amount,
+        'due_date': due_date,
+        'reminder_days': reminder_days,
+        'auto_roll': auto_roll,
+        'status': 'pending',
+        'created_at': datetime.utcnow()
+    }
+    
+    mongo.db.recurring_payments.insert_one(doc)
+    flash(f'Recurring payment "{title}" added!', 'success')
+    return redirect(url_for('interval_spend'))
+
+@app.route('/pay_recurring/<record_id>', methods=['POST'])
+def pay_recurring(record_id):
+    if 'username' not in session: return redirect(url_for('my_profile'))
+    username = session['username']
+    
+    from bson.objectid import ObjectId
+    try:
+        rec = mongo.db.recurring_payments.find_one({'_id': ObjectId(record_id), 'username': username})
+        if not rec:
+            flash('Record not found.', 'error')
+            return redirect(url_for('interval_spend'))
+            
+        # 1. Log as Daily Expense so budget goes down cleanly
+        expense_doc = {
+            'username': username,
+            'category': 'Lifestyle', # or a custom category
+            'amount': rec['amount'],
+            'description': f"[AUTO-LOGGED] Interval Spend: {rec['title']}",
+            'expense_date': datetime.now(),
+            'is_loan': False,
+            'created_at': datetime.utcnow()
+        }
+        mongo.db.daily_expenses.insert_one(expense_doc)
+        
+        # 2. Update overall user budget metrics
+        user = mongo.db.users.find_one({'name': username})
+        if user:
+            new_spent = user.get('total_spent', 0) + rec['amount']
+            new_bal = user.get('balance', 0) - rec['amount']
+            mongo.db.users.update_one({'_id': user['_id']}, {'$set': {
+                'total_spent': new_spent, 'balance': new_bal, 'over_budget': new_bal < 0
+            }})
+            # Fire an alert if crossed any boundary
+            trigger_budget_alert(user, user.get('monthly_limit', 0), new_bal, new_spent, 'Interval Spend')
+            
+        # 3. Handle Auto Roll toggle requested by User
+        if rec.get('auto_roll', False):
+            try:
+                import calendar
+                old_date = rec['due_date']
+                month = old_date.month % 12 + 1
+                year = old_date.year + (old_date.month // 12)
+                day = min(old_date.day, calendar.monthrange(year, month)[1])
+                new_due_date = old_date.replace(year=year, month=month, day=day)
+            except:
+                # Fallback if standard shifting fails
+                new_due_date = rec['due_date'] + timedelta(days=30)
+                
+            mongo.db.recurring_payments.update_one(
+                {'_id': ObjectId(record_id)},
+                {'$set': {'due_date': new_due_date}}
+            )
+            flash(f'Payment submitted! Auto-rolled "{rec["title"]}" to exactly 1 month later.', 'success')
+        else:
+            mongo.db.recurring_payments.delete_one({'_id': ObjectId(record_id)})
+            flash(f'Payment submitted! Tracked your liability "{rec["title"]}" and removed it.', 'success')
+            
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'success': True, 'action': 'rolled' if rec.get('auto_roll', False) else 'deleted'})
+            
+    except Exception as e:
+        print("Error paying recurring:", e)
+        if request.headers.get('Accept') == 'application/json': return jsonify({'success': False, 'error': str(e)})
+        flash('Error processing payment.', 'error')
+        
+    return redirect(url_for('interval_spend'))
+
+@app.route('/delete_recurring/<record_id>', methods=['POST'])
+def delete_recurring(record_id):
+    if 'username' not in session: return redirect(url_for('my_profile'))
+    from bson.objectid import ObjectId
+    try:
+        mongo.db.recurring_payments.delete_one({'_id': ObjectId(record_id), 'username': session['username']})
+        if request.headers.get('Accept') == 'application/json': return jsonify({'success': True})
+        flash('Interval spend profile deleted.', 'success')
+    except Exception as e:
+        if request.headers.get('Accept') == 'application/json': return jsonify({'success': False})
+        flash('Error deleting record.', 'error')
+    return redirect(url_for('interval_spend'))
+
 
 
 @app.route('/about_us')
@@ -848,20 +1149,14 @@ def add_expense():
             )
             t.start()
 
-        # Update user balance (not for loans)
-        if not is_loan:
-            user = mongo.db.users.find_one({'name': username})
-            if user:
-                new_spent = round(user.get('total_spent', 0.0) + amount, 2)
-                lim       = user.get('monthly_limit', 0.0)
-                new_bal   = round(lim - new_spent, 2)
-                mongo.db.users.update_one({'name': username}, {'$set': {
-                    'total_spent': new_spent, 'balance': new_bal, 'over_budget': new_bal < 0
-                }})
+        # Universally sync user ledger to cleanly capture standard expenses and loans
+        new_spent, new_bal = sync_user_ledger(username)
+        
+        user = mongo.db.users.find_one({'name': username})
+        lim = user.get('monthly_limit', 0.0) if user else 0.0
                 
-                # TASK 6: Trigger Guardian Mail verification asynchronously
-                user_updated = mongo.db.users.find_one({'name': username})
-                alert_msg, alert_cat = trigger_budget_alert(user_updated, lim, new_bal, new_spent, category) or (None, None)
+        # TASK 6: Trigger Guardian Mail verification asynchronously
+        alert_msg, alert_cat = trigger_budget_alert(user, lim, new_bal, new_spent, category) or (None, None)
 
         session['play_coins'] = True
         
@@ -881,7 +1176,62 @@ def add_expense():
         flash('Something went wrong. Please try again.', 'error')
         return redirect(url_for('my_expenses'))
 
+@app.route('/api/remind_loan/<expense_id>', methods=['POST'])
+def remind_loan(expense_id):
+    """Task 13 Debt Recovery Logic"""
+    if 'username' not in session: 
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    
+    from bson.objectid import ObjectId
+    try:
+        username = session['username']
+        exp = mongo.db.daily_expenses.find_one({'_id': ObjectId(expense_id), 'username': username, 'is_loan': True})
+        if not exp:
+            return jsonify({'success': False, 'error': 'Record not found'}), 404
+            
+        friend_email = exp.get('friend_email')
+        friend_name = exp.get('friend_name', 'Friend')
+        desc = exp.get('description', 'Loan')
+        amount = exp.get('amount', 0)
+        
+        if not friend_email:
+            return jsonify({'success': False, 'error': 'No email on file for friend'}), 400
+            
+        import threading
+        # Call the async sender defined earlier
+        threading.Thread(target=send_gentle_reminder_async, args=(friend_email, friend_name, username, amount, desc)).start()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
+
+@app.route('/api/mark_loan_paid/<expense_id>', methods=['POST'])
+def mark_loan_paid(expense_id):
+    """Task 15 The Money Return Celebration Logic"""
+    if 'username' not in session: 
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    
+    from bson.objectid import ObjectId
+    try:
+        username = session['username']
+        exp = mongo.db.daily_expenses.find_one({'_id': ObjectId(expense_id), 'username': username, 'is_loan': True})
+        if not exp:
+            return jsonify({'success': False, 'error': 'Record not found'}), 404
+            
+        # Update ledger status securely
+        mongo.db.daily_expenses.update_one(
+            {'_id': exp['_id']},
+            {'$set': {'loan_status': 'paid'}}
+        )
+        
+        # User requested: Decreasing expenses because they received the money back
+        # Simply re-syncing the ledger automatically achieves this mathematically!
+        new_spent, new_bal = sync_user_ledger(username)
+        
+        return jsonify({'success': True, 'new_balance': new_bal})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 @app.route('/delete_expense/<expense_id>', methods=['POST'])
 def delete_expense(expense_id):
     """Task 4 — Expense Deletion logic."""
@@ -898,17 +1248,8 @@ def delete_expense(expense_id):
 
         mongo.db.daily_expenses.delete_one({'_id': ObjectId(expense_id)})
 
-        # Reverse the budget impact if it wasn't a loan
-        if not exp.get('is_loan', False):
-            user = mongo.db.users.find_one({'name': username})
-            if user:
-                amount    = float(exp.get('amount', 0.0))
-                new_spent = round(max(0.0, user.get('total_spent', 0.0) - amount), 2)
-                lim       = user.get('monthly_limit', 0.0)
-                new_bal   = round(lim - new_spent, 2)
-                mongo.db.users.update_one({'name': username}, {'$set': {
-                    'total_spent': new_spent, 'balance': new_bal, 'over_budget': new_bal < 0
-                }})
+        # Universally sync user ledger safely regardless of loan status
+        new_spent, new_bal = sync_user_ledger(username)
 
         session['play_crumple'] = True
         flash('Expense deleted successfully.', 'success')
@@ -974,5 +1315,53 @@ def file_too_large(error):
     return redirect(url_for('my_expenses'))
 
 
+import threading
+import time
+
+def reminder_scheduler():
+    """Background Daemon for Task 12: Smart Reminder Automation"""
+    # Wait 5 seconds on startup as explicitly requested by USER
+    time.sleep(5)
+    
+    with app.app_context():
+        while True:
+            try:
+                now = datetime.now()
+                for rec in mongo.db.recurring_payments.find({'status': 'pending'}):
+                    rec_due = rec.get('due_date')
+                    remind_days = rec.get('reminder_days', 0)
+                    
+                    if rec_due:
+                        threshold_date = rec_due.date() - timedelta(days=remind_days)
+                        if now.date() >= threshold_date:
+                            # Danger zone detected! Check spam lock:
+                            last_sent_for = rec.get('reminder_sent_for')
+                            if last_sent_for != rec_due:
+                                username = rec.get('username')
+                                user = mongo.db.users.find_one({'name': username})
+                                if user and user.get('email'):
+                                    days_left = (rec_due.date() - now.date()).days
+                                    send_reminder_email_async(
+                                        user['email'], 
+                                        username, 
+                                        rec['title'], 
+                                        rec['amount'], 
+                                        rec_due.strftime('%b %d, %Y'), 
+                                        max(0, days_left)
+                                    )
+                                    # Lock it
+                                    mongo.db.recurring_payments.update_one(
+                                        {'_id': rec['_id']},
+                                        {'$set': {'reminder_sent_for': rec_due}}
+                                    )
+            except Exception as e:
+                print("[Daemon] Error in reminder scheduler:", e)
+                
+            # Sleep for 6 hours
+            time.sleep(21600)
+
+# Start the thread securely outside the request context
+threading.Thread(target=reminder_scheduler, daemon=True).start()
+
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5000, use_reloader=False)
