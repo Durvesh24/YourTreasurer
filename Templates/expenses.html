@@ -184,9 +184,11 @@
 
         <div class="history-panel" id="panel-history" style="display: none;">
             {% if not expenses %}
-                <div class="empty-state">
-                    <span class="empty-icon">🪙</span>
-                    <p class="empty-text">Your vault is empty.<br>Record an expense to see it here.</p>
+                <div class="empty-state" style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:60px 20px; text-align:center;">
+                    <div style="font-size:4rem; margin-bottom:20px; animation: floatBob 2s ease-in-out infinite;">🪙</div>
+                    <h3 style="color:#f8fafc; font-size:1.4rem; font-weight:700; margin:0 0 10px;">Your Vault is Empty</h3>
+                    <p style="color:#94a3b8; font-size:1rem; max-width:280px; line-height:1.6; margin:0 0 25px;">You haven't tracked any expenses yet. Use the form on the left to log your first one!</p>
+                    <button onclick="setMode('entry')" style="background:linear-gradient(135deg,#3b82f6,#2563eb); color:white; border:none; padding:12px 28px; border-radius:30px; font-weight:700; font-size:1rem; cursor:pointer; transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform=''">+ Add First Expense</button>
                 </div>
             {% else %}
                 <!-- Feature 14: Search + Filter Bar -->
@@ -242,7 +244,8 @@
                          data-loan-status="{{ exp.loan_status or '' }}"
                          data-friend-name="{{ exp.friend_name | default('') | escape }}"
                          data-friend-email="{{ exp.friend_email | default('') | escape }}"
-                         data-receipt-url="{{ exp.receipt_url | default('') | escape }}">
+                         data-receipt-url="{{ exp.receipt_url | default('') | escape }}"
+                         style="animation: slideUpCard 0.45s cubic-bezier(.25,.8,.25,1) both; animation-delay: {{ loop.index0 * 0.04 }}s;">
                         <div class="exp-icon">
                             {% if exp.category == 'Educational' %}🎓
                             {% elif exp.category == 'Lifestyle' %}🛍️
@@ -262,7 +265,7 @@
                                 {% endif %}
                             </h3>
                             <p class="exp-desc">{{ exp.description[:45] + '...' if exp.description and exp.description|length > 45 else (exp.description or 'No description provided') }}</p>
-                            <p class="exp-date">{{ exp.expense_date.strftime('%b %d, %Y') if exp.expense_date else 'N/A' }}{% if exp.is_loan %} · Lent to <strong>{{ exp.friend_name }}</strong>{% endif %}</p>
+                            <p class="exp-date">{{ exp.expense_date.strftime('%b %d, %Y') if exp.expense_date else 'N/A' }}{% if exp.is_loan %} · <span style="display:inline-flex; align-items:center; gap:4px; background:rgba(139,92,246,0.15); color:#c4b5fd; border:1px solid rgba(139,92,246,0.3); padding:2px 8px; border-radius:20px; font-size:0.72rem; font-weight:600; letter-spacing:0.3px;">👤 {{ exp.friend_name }}</span>{% endif %}</p>
                         </div>
                         <div class="exp-action-group">
                             <div class="exp-amount">&#8377;{{ '{:,.0f}'.format(exp.amount) }}</div>
@@ -700,15 +703,19 @@
     }
 
     window.addEventListener('DOMContentLoaded', () => {
-        if (document.body.dataset.playCoins === 'true') {
-            playCoinSound();
-            launchCoinRain();
+        // Gap 3 Fix: Read sound flags directly from body data attributes
+        const bodyEl = document.body;
+        if (bodyEl.getAttribute('data-play-coins') === 'true') {
+            setTimeout(() => { playCoinSound(); launchCoinRain(); }, 400);
         }
-        if (document.body.dataset.playCrumple === 'true') {
-            playCrumpleSound();
-            // Optional: force open history tab if a deletion occurred
+        if (bodyEl.getAttribute('data-play-crumple') === 'true') {
+            setTimeout(() => playCrumpleSound(), 300);
             setMode('history');
         }
+        // Gap 2: Trigger slide-in animation on all cards
+        document.querySelectorAll('.expense-card').forEach((card, i) => {
+            card.style.opacity = '1';
+        });
     });
 
     // =========================================================
@@ -961,7 +968,7 @@
                 </div>
                 <input type="text" name="description" placeholder="Description (optional)" maxlength="120" class="fab-input">
                 <input type="hidden" name="expense_date" id="fab-date">
-                <button type="submit" class="fab-submit-btn">💾 Save Expense</button>
+                <button type="submit" class="fab-submit-btn" id="fab-submit-btn" onclick="this.innerHTML='<span style=\'display:inline-block; width:14px; height:14px; border:2px solid rgba(255,255,255,0.4); border-top-color:white; border-radius:50%; animation:spin 0.7s linear infinite; margin-right:8px;\'></span> Saving...'; this.disabled=true;">💾 Save Expense</button>
             </form>
         </div>
     </div>

@@ -50,12 +50,54 @@
     {% endif %}
     {% endwith %}
 
-    <!-- HERO SECTION -->
+    <!-- HERO & DASHBOARD SECTION -->
     <main class="hero">
+        {% if session.get('username') and user %}
+        <div class="dashboard-content" style="width: 100%; max-width: 900px; margin: 0 auto; text-align: left; animation: fadeUp .6s ease forwards; padding-top: 40px;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom: 30px;">
+                <div>
+                    <p style="color: #38bdf8; font-weight:700; letter-spacing:1px; margin:0 0 5px;">COMMAND CENTER</p>
+                    <h1 class="dash-title {% if user and user.get('over_budget') %}hero-pulsing{% endif %}">Welcome, {{ session['username'] }}</h1>
+                </div>
+            </div>
+
+            <!-- Task 14: Real-Time Progress Engine -->
+            <div class="glass-panel" style="background: rgba(30, 41, 59, 0.45); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 20px; padding: 30px; backdrop-filter: blur(16px); margin-bottom: 30px;">
+                <div style="display:flex; justify-content:space-between; margin-bottom: 15px;">
+                    <span style="color:#e2e8f0; font-weight:600; font-size:1.1rem;">Budget Status Cycle #{{ user.cycle_number }}</span>
+                    <span id="budget-percentage" style="color:#f8fafc; font-weight:800; font-size:1.2rem; font-family:monospace;">0%</span>
+                </div>
+                
+                <div style="width:100%; height:22px; background:rgba(0,0,0,0.4); border-radius:11px; overflow:hidden; border:1px solid rgba(255,255,255,0.05); box-shadow: inset 0 2px 5px rgba(0,0,0,0.5);">
+                    <div id="budget-progress-bar" style="width: 0%; height: 100%; background: #10b981; transition: width 1.2s cubic-bezier(.34,1.56,.64,1), background 0.5s, box-shadow 0.5s; border-radius:11px; box-shadow: 0 0 10px rgba(16,185,129,0.5);"></div>
+                </div>
+                
+                <div style="display:flex; justify-content:space-between; margin-top: 15px; color:#cbd5e1; font-size:1.05rem; font-family:monospace;">
+                    <span id="spent-label">Spent: ₹{{ "{:,.2f}".format(user.total_spent) }}</span>
+                    <span id="limit-label">Limit: ₹{{ "{:,.2f}".format(user.monthly_limit) }}</span>
+                </div>
+            </div>
+
+            <!-- Dashboard Mini-Log Widget -->
+            <div class="glass-panel" style="background: rgba(15, 23, 42, 0.3); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 20px; padding: 25px; backdrop-filter: blur(16px);">
+                <h3 style="color: white; margin: 0 0 15px; font-size: 1.1rem;">⚡ Quick Log Expense</h3>
+                <form id="quick-log-form" onsubmit="handleQuickLog(event)" style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                    <input type="text" id="ql-desc" placeholder="What did you buy?" required style="flex:2; min-width:200px; background:rgba(30,41,59,0.6); border:1px solid rgba(255,255,255,0.1); padding:12px 15px; border-radius:10px; color:white; font-family:'Inter'; outline:none;">
+                    <input type="number" id="ql-amount" placeholder="Amount (₹)" min="1" step="0.01" required style="flex:1; min-width:120px; background:rgba(30,41,59,0.6); border:1px solid rgba(255,255,255,0.1); padding:12px 15px; border-radius:10px; color:white; font-family:'Inter'; outline:none;">
+                    <select id="ql-cat" required style="flex:1; min-width:140px; background:rgba(30,41,59,0.6); border:1px solid rgba(255,255,255,0.1); padding:12px 15px; border-radius:10px; color:white; font-family:'Inter'; outline:none;">
+                        <option value="Lifestyle">Lifestyle</option>
+                        <option value="Educational">Educational</option>
+                        <option value="Healthy Food">Healthy Food</option>
+                        <option value="Junk Food">Junk Food</option>
+                        <option value="Travelling">Travelling</option>
+                        <option value="Other">Other</option>
+                    </select>
+                    <button type="submit" id="ql-submit" style="background:linear-gradient(135deg, #3b82f6, #2563eb); color:white; border:none; padding:12px 24px; border-radius:10px; font-weight:bold; cursor:pointer; font-family:'Inter'; transition:transform 0.2s, box-shadow 0.2s;">Log It 🚀</button>
+                </form>
+            </div>
+        </div>
+        {% else %}
         <div class="hero-content">
-            {% if session.get('username') %}
-            <p class="hero-greeting">Welcome back, {{ session['username'] }}</p>
-            {% endif %}
             <h1 class="hero-title">
                 Your Campus<br>
                 <span class="hero-accent">Budget Vault</span>
@@ -66,16 +108,10 @@
             </p>
 
             <div class="hero-actions">
-                {% if session.get('username') %}
-                <a href="/my_expenses" class="btn-primary">Go to My Expenses</a>
-                <a href="/analysis" class="btn-ghost">View Analysis</a>
-                {% else %}
                 <a href="/my_profile" class="btn-primary">Get Started</a>
                 <a href="/about_us" class="btn-ghost">Learn More</a>
-                {% endif %}
             </div>
 
-            <!-- Feature Pills -->
             <div class="feature-pills">
                 <span class="pill">Daily Expense Tracking</span>
                 <span class="pill">Friend Loan Manager</span>
@@ -83,7 +119,31 @@
                 <span class="pill">Spending Analysis</span>
             </div>
         </div>
+        {% endif %}
     </main>
+
+    <style>
+        /* Dash Title Mobile & Pulsing logic */
+        .dash-title {
+            color: #f8fafc; font-size: 2.5rem; font-weight:800; margin:0;
+            transition: color 0.5s ease;
+        }
+        .hero-pulsing {
+            animation: textPulseRed 2s ease-in-out infinite;
+        }
+        @keyframes textPulseRed {
+            0%, 100% { color: #fca5a5; text-shadow: 0 0 10px rgba(239, 68, 68, 0.4); }
+            50%      { color: #ef4444; text-shadow: 0 0 20px rgba(239, 68, 68, 0.8); }
+        }
+        
+        /* Mobile fixes for Home */
+        @media (max-width: 768px) {
+            .dashboard-content { padding: 80px 15px 40px !important; }
+            .dash-title { font-size: 1.8rem; }
+            #quick-log-form { flex-direction: column; width: 100%; }
+            #ql-desc, #ql-amount, #ql-cat, #ql-submit { width: 100%; max-width: 100%; flex: none; }
+        }
+    </style>
 
     <footer class="common-footer">YourTreasurer &copy; 2026 | Helping Hand</footer>
 
@@ -119,9 +179,125 @@
             setTimeout(() => el.remove(), 400);
         });
     }, 4000);
+
+    // ==========================================
+    // TASK 14 & 15: REAL-TIME DASHBOARD ENGINE
+    // ==========================================
+    {% if session.get('username') and user %}
+    let currentSpent = {{ user.total_spent }};
+    const maxLimit = {{ user.monthly_limit }};
+    const pBar = document.getElementById('budget-progress-bar');
+    const pText = document.getElementById('budget-percentage');
+    const spentLabel = document.getElementById('spent-label');
+
+    function syncProgressBar(spent) {
+        if (maxLimit <= 0) return;
+        let pct = (spent / maxLimit) * 100;
+        let displayPct = pct;
+        
+        let color = '#10b981'; // Emerald
+        let shadow = '#10b981';
+        
+        if (pct >= 50 && pct < 85) { color = '#f59e0b'; shadow = '#f59e0b'; } // Amber
+        if (pct >= 85) { color = '#ef4444'; shadow = '#ef4444'; } // Crimson
+        
+        // Cap visual width at 100% so it doesn't break CSS bounds, but show >100% numerically
+        pBar.style.width = Math.min(pct, 100) + '%';
+        pBar.style.background = color;
+        pBar.style.boxShadow = `0 0 15px rgba(${hexToRgb(shadow)}, 0.6)`;
+        
+        if (displayPct > 100) {
+            pText.innerHTML = `<span style="color:#ef4444;">${displayPct.toFixed(1)}% OVER BUDGET</span>`;
+            pBar.style.animation = 'red-pulse 1s infinite alternate';
+        } else {
+            pText.textContent = displayPct.toFixed(1) + '%';
+            pBar.style.animation = 'none';
+        }
+        
+        spentLabel.innerHTML = `Spent: ₹${spent.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+    }
+
+    function hexToRgb(hex) {
+        let result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '16,185,129';
+    }
+
+    // Initialize Engine
+    setTimeout(() => syncProgressBar(currentSpent), 300);
+
+    // KaChing Synthesizer
+    function playKaChingSound() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const t = ctx.currentTime;
+            const bSize = ctx.sampleRate * 0.1; const b = ctx.createBuffer(1, bSize, ctx.sampleRate);
+            const d = b.getChannelData(0); for(let i=0; i<bSize; i++) d[i] = Math.random()*2-1;
+            const noise = ctx.createBufferSource(); noise.buffer = b;
+            const noiseFilter = ctx.createBiquadFilter(); noiseFilter.type = 'highpass'; noiseFilter.frequency.value = 5000;
+            const noiseGain = ctx.createGain(); noiseGain.gain.setValueAtTime(0.3, t); noiseGain.gain.exponentialRampToValueAtTime(0.01, t+0.08);
+            noise.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(ctx.destination); noise.start(t);
+            const osc1 = ctx.createOscillator(), osc2 = ctx.createOscillator(); const gainNode = ctx.createGain();
+            osc1.type = 'sine'; osc2.type = 'sine'; osc1.frequency.setValueAtTime(3200, t + 0.08); osc2.frequency.setValueAtTime(4500, t + 0.13);
+            gainNode.gain.setValueAtTime(0, t); gainNode.gain.linearRampToValueAtTime(0.6, t + 0.13); gainNode.gain.exponentialRampToValueAtTime(0.01, t + 0.9);
+            osc1.connect(gainNode); osc2.connect(gainNode); gainNode.connect(ctx.destination);
+            osc1.start(t+0.08); osc2.start(t+0.13); osc1.stop(t+0.9); osc2.stop(t+0.9);
+        } catch(_) {}
+    }
+
+    // AJAX Form Handling
+    async function handleQuickLog(e) {
+        e.preventDefault();
+        const btn = document.getElementById('ql-submit');
+        const desc = document.getElementById('ql-desc');
+        const amt = document.getElementById('ql-amount');
+        const cat = document.getElementById('ql-cat');
+        
+        btn.disabled = true; btn.innerHTML = '⏳';
+        
+        try {
+            const formData = new FormData();
+            formData.append('description', desc.value);
+            formData.append('amount', amt.value);
+            formData.append('category', cat.value);
+
+            const res = await fetch('/add_expense', {
+                method: 'POST',
+                headers: { 'Accept': 'application/json' },
+                body: formData
+            });
+            const data = await res.json();
+            
+            if (data.success) {
+                playKaChingSound();
+                currentSpent += parseFloat(amt.value);
+                syncProgressBar(currentSpent);
+                
+                desc.value = ''; amt.value = ''; 
+                btn.innerHTML = '✅ Logged!';
+                btn.style.background = '#10b981';
+                setTimeout(() => {
+                    btn.innerHTML = 'Log It 🚀';
+                    btn.style.background = 'linear-gradient(135deg, #3b82f6, #2563eb)';
+                    btn.disabled = false;
+                }, 2000);
+            } else {
+                alert("Error: " + data.error);
+                btn.disabled = false; btn.innerHTML = 'Log It 🚀';
+            }
+        } catch (err) {
+            console.error(err);
+            btn.disabled = false; btn.innerHTML = 'Log It 🚀';
+        }
+    }
+    {% endif %}
     </script>
+    <style>
+        @keyframes red-pulse {
+            0% { box-shadow: inset 0 0 10px rgba(239,68,68,0.5), 0 0 15px rgba(239,68,68,0.5); }
+            100% { box-shadow: inset 0 0 20px rgba(239,68,68,1), 0 0 30px rgba(239,68,68,1); }
+        }
+    </style>
     {% if session.get('username') %}
-    <a href="/my_expenses" class="global-fab" title="Add New Expense">+</a>
     {% endif %}
 </body>
 </html>
