@@ -12,7 +12,12 @@ import cloudinary.api
 
 load_dotenv(override=True)
 
-app = Flask(__name__)
+app = Flask(
+    __name__,
+    template_folder="Templates",
+    static_folder="Static",
+    static_url_path="/static",
+)
 app.secret_key = os.environ.get("SECRET_KEY", "campuscoin_tracker_2026")
 
 # ── Cloudinary Configuration ──────────────────────────────
