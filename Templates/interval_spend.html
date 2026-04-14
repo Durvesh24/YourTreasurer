@@ -18,6 +18,7 @@
             font-weight: 800;
             background: linear-gradient(135deg, #f0f9ff, #818cf8);
             -webkit-background-clip: text;
+            background-clip: text;
             -webkit-text-fill-color: transparent;
             margin: 0 0 10px;
         }
@@ -296,13 +297,13 @@
             {% else %}{% set b_bg = 'rgba(15, 23, 42, 0.6)' %}{% set b_br = 'rgba(255, 255, 255, 0.08)' %}{% set b_txt = '#38bdf8' %}
             {% endif %}
 
-            <div class="liability-card {% if rec.is_danger %}danger-pulse{% endif %}" id="card-{{ rec._id }}" style="background: {{ b_bg }}; border-color: {{ b_br }}; transition:all 0.4s ease-out;">
+            <div class="liability-card {% if rec.is_danger %}danger-pulse{% endif %}" id="card-{{ rec._id }}" data-bg="{{ b_bg }}" data-br="{{ b_br }}" data-txt="{{ b_txt }}" style="transition:all 0.4s ease-out;">
                 {% if rec.is_danger %}
                 <div class="danger-badge">DUE SOON</div>
                 {% endif %}
                 
                 <h3 class="liab-title">{{ rec.title }}</h3>
-                <p class="liab-amount" style="color: {{ b_txt }};">₹{{ "{:,.2f}".format(rec.amount) }}</p>
+                <p class="liab-amount">₹{{ "{:,.2f}".format(rec.amount) }}</p>
                 
                 <div class="liab-meta" style="display:flex; align-items:center; gap:15px; background:rgba(0,0,0,0.25); padding:12px; border-radius:14px; margin-bottom:20px; border:1px solid rgba(255,255,255,0.03);">
                     <!-- SVG Chronological Progress Ring Engine -->
@@ -332,6 +333,14 @@
             </div>
             {% endfor %}
         </div>
+        <script>
+            document.querySelectorAll('.liability-card').forEach(card => {
+                if (card.dataset.bg) card.style.background = card.dataset.bg;
+                if (card.dataset.br) card.style.borderColor = card.dataset.br;
+                const amtEl = card.querySelector('.liab-amount');
+                if (amtEl && card.dataset.txt) amtEl.style.color = card.dataset.txt;
+            });
+        </script>
         {% endif %}
     </div>
 

@@ -1,4 +1,10 @@
 flask
+pymongo
+python-dotenv
+cloudinary
+certifi
+python-dateutil
+flask
 pymongo[srv]
 flask-mail
 cloudinary

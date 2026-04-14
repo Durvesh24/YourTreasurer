@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YourTreasurer | Verify & Set Password</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/Style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/profile.css') }}">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="profile-page">
+  <div class="brand-logo-top">
+    <img src="{{ url_for('static', filename='images/logo.png') }}" alt="YourTreasurer Logo">
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-container">
+        {% for category, message in messages %}
+          <div class="flash-msg flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <div class="gateway-wrapper">
+    <div class="gateway-card" id="gateway-card">
+      <div class="gateway-header">
+        <div class="lock-icon" style="font-size: 2.6rem;">🛡️</div>
+        <h1 class="gateway-title">Verify & Update</h1>
+        <p class="gateway-subtitle">Code sent to <strong style="color:#bae6fd;">{{ email_mask }}</strong></p>
+      </div>
+
+      <form class="gateway-form active-form" action="{{ url_for('auth_reset_verify') }}" method="POST">
+        <div class="input-group">
+          <label for="otp">6-digit verification code</label>
+          <div class="input-wrapper">
+            <span class="input-icon">🔢</span>
+            <input
+              type="text"
+              id="otp"
+              name="otp"
+              inputmode="numeric"
+              pattern="[0-9]{6}"
+              maxlength="6"
+              minlength="6"
+              placeholder="Enter code"
+              autocomplete="one-time-code"
+              required
+            >
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label for="new_password">New password</label>
+          <div class="input-wrapper">
+            <span class="input-icon">🆕</span>
+            <input type="password" id="new_password" name="new_password" placeholder="Min 8 chars · Upper · Lower · Number" required minlength="8">
+            <button type="button" class="eye-toggle" onclick="togglePass('new_password', this)">👁</button>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label for="confirm_password">Confirm new password</label>
+          <div class="input-wrapper">
+            <span class="input-icon">✅</span>
+            <input type="password" id="confirm_password" name="confirm_password" placeholder="Re-enter new password" required minlength="8">
+          </div>
+        </div>
+
+        <button type="submit" class="gateway-btn register-btn">
+          <span class="btn-text">Update Password</span>
+          <span class="btn-icon">🔒</span>
+        </button>
+      </form>
+
+      <div class="auth-links-row" style="margin-top:14px;">
+        <form action="{{ url_for('auth_otp_resend') }}" method="POST" style="margin:0;">
+          <input type="hidden" name="purpose" value="reset">
+          <button type="submit" class="auth-link-btn">Resend code</button>
+        </form>
+        <a class="auth-link" href="{{ url_for('my_profile') }}">Back to gateway</a>
+      </div>
+    </div>
+  </div>
+
+  <footer class="common-footer">
+    YourTreasurer &copy; 2026 | Helping Hand
+  </footer>
+
+  <script>
+    function togglePass(inputId, btn) {
+      const input = document.getElementById(inputId);
+      if (!input) return;
+      if (input.type === 'password') {
+        input.type = 'text';
+        btn.textContent = '🙈';
+      } else {
+        input.type = 'password';
+        btn.textContent = '👁';
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        document.querySelectorAll('.flash-msg').forEach(msg => {
+          msg.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+          msg.style.opacity = '0';
+          msg.style.transform = 'translateY(-10px)';
+          setTimeout(() => msg.remove(), 400);
+        });
+      }, 5000);
+
+      const otp = document.getElementById('otp');
+      if (otp) {
+        otp.addEventListener('input', () => {
+          otp.value = otp.value.replace(/\D/g, '').slice(0, 6);
+        });
+        otp.focus();
+      }
+    });
+  </script>
+</body>
+</html>
+

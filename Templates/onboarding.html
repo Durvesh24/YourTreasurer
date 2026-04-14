@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to YourTreasurer | Vault Setup</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/Style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { overflow-y: auto !important; background: #060e1f; }
+
+        .onboard-wrapper {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+            position: relative;
+            z-index: 5;
+        }
+
+        /* Animated orbs background */
+        .orb { position: fixed; border-radius: 50%; filter: blur(80px); pointer-events: none; opacity: 0.18; }
+        .orb-1 { width: 450px; height: 450px; background: #3b82f6; top: -100px; left: -100px; animation: floatOrb 12s ease-in-out infinite; }
+        .orb-2 { width: 350px; height: 350px; background: #8b5cf6; bottom: -80px; right: -80px; animation: floatOrb 15s ease-in-out infinite reverse; }
+        .orb-3 { width: 250px; height: 250px; background: #10b981; top: 50%; right: 20%; animation: floatOrb 10s ease-in-out infinite 3s; }
+        @keyframes floatOrb { 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-30px) scale(1.05); } }
+
+        .onboard-card {
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 28px;
+            padding: 50px 48px;
+            max-width: 680px;
+            width: 100%;
+            box-shadow: 0 40px 80px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.05);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Shimmer top border */
+        .onboard-card::before {
+            content: '';
+            position: absolute; top: 0; left: 0; right: 0; height: 3px;
+            background: linear-gradient(90deg, #3b82f6, #8b5cf6, #10b981, #3b82f6);
+            background-size: 200%;
+            animation: shimmer 3s linear infinite;
+        }
+        @keyframes shimmer { to { background-position: 200% 0; } }
+
+        /* Step dots */
+        .step-dots {
+            display: flex; gap: 8px; justify-content: center; margin-bottom: 36px;
+        }
+        .step-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: rgba(255,255,255,0.12);
+            transition: all 0.4s ease;
+        }
+        .step-dot.active {
+            width: 24px; border-radius: 4px;
+            background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+        }
+        .step-dot.done { background: rgba(16,185,129,0.6); }
+
+        /* Slides */
+        .slide { display: none; animation: slideIn 0.5s cubic-bezier(0.16,1,0.3,1) forwards; }
+        .slide.active { display: block; }
+        @keyframes slideIn { from { opacity:0; transform: translateX(30px); } to { opacity:1; transform: translateX(0); } }
+
+        .slide-icon {
+            font-size: 3.5rem;
+            margin-bottom: 20px;
+            display: block;
+            animation: iconPop 0.6s cubic-bezier(0.34,1.56,0.64,1) 0.2s both;
+        }
+        @keyframes iconPop { from { transform: scale(0.5) rotate(-10deg); opacity:0; } to { transform: scale(1) rotate(0); opacity:1; } }
+
+        .slide-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: rgba(59,130,246,0.15);
+            border: 1px solid rgba(59,130,246,0.3);
+            border-radius: 50px;
+            color: #93c5fd;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            margin-bottom: 16px;
+        }
+
+        .slide h1 {
+            font-family: 'Poppins', sans-serif;
+            font-size: clamp(1.6rem, 4vw, 2.2rem);
+            font-weight: 800;
+            color: #f0f9ff;
+            margin: 0 0 16px;
+            line-height: 1.2;
+        }
+
+        .slide h1 span {
+            background: linear-gradient(135deg, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .slide p {
+            font-family: 'Inter', sans-serif;
+            color: #94a3b8;
+            font-size: 1.05rem;
+            line-height: 1.75;
+            margin-bottom: 30px;
+        }
+
+        .feature-row {
+            display: flex; flex-direction: column; gap: 14px; margin-bottom: 30px;
+        }
+        .feature-item {
+            display: flex; align-items: flex-start; gap: 14px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.05);
+            padding: 16px 18px; border-radius: 14px;
+            transition: border-color 0.3s;
+        }
+        .feature-item:hover { border-color: rgba(59,130,246,0.3); }
+        .feature-item-icon { font-size: 1.5rem; flex-shrink: 0; margin-top: 2px; }
+        .feature-item-text h4 { margin: 0 0 4px; color: #e2e8f0; font-size: 0.95rem; font-weight: 600; font-family:'Inter'; }
+        .feature-item-text p  { margin: 0; color: #64748b; font-size: 0.85rem; line-height: 1.5; }
+
+        /* Budget slide */
+        .budget-input-wrap {
+            position: relative; margin-bottom: 24px;
+        }
+        .budget-symbol {
+            position: absolute; left: 18px; top: 50%; transform: translateY(-50%);
+            font-size: 1.4rem; color: #38bdf8; font-weight: 700;
+        }
+        .budget-input {
+            width: 100%; padding: 18px 18px 18px 44px;
+            background: rgba(255,255,255,0.04);
+            border: 2px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            color: #f0f9ff;
+            font-size: 1.5rem;
+            font-weight: 700;
+            font-family: 'Inter', sans-serif;
+            outline: none;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+        .budget-input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 4px rgba(59,130,246,0.15);
+        }
+        .budget-input::placeholder { color: rgba(255,255,255,0.2); font-size: 1.1rem; }
+
+        .budget-suggestions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 30px; }
+        .budget-chip {
+            padding: 8px 16px;
+            background: rgba(59,130,246,0.1);
+            border: 1px solid rgba(59,130,246,0.25);
+            border-radius: 50px; color: #93c5fd;
+            font-size: 0.82rem; font-weight: 600; cursor: pointer;
+            transition: all 0.2s;
+        }
+        .budget-chip:hover { background: rgba(59,130,246,0.2); border-color: rgba(59,130,246,0.5); transform: translateY(-2px); }
+
+        /* Buttons */
+        .btn-next {
+            width: 100%; padding: 16px;
+            background: linear-gradient(135deg, #1d4ed8, #3b82f6);
+            color: #fff; border: none; border-radius: 14px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 1rem; font-weight: 700; letter-spacing: 0.3px;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            box-shadow: 0 8px 24px rgba(59,130,246,0.4);
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+        }
+        .btn-next:hover { transform: translateY(-2px); box-shadow: 0 14px 32px rgba(59,130,246,0.5); }
+        .btn-next:active { transform: scale(0.98); }
+
+        .btn-success {
+            background: linear-gradient(135deg, #059669, #10b981) !important;
+            box-shadow: 0 8px 24px rgba(16,185,129,0.4) !important;
+        }
+        .btn-success:hover { box-shadow: 0 14px 32px rgba(16,185,129,0.55) !important; }
+
+        .skip-link {
+            display: block; text-align: center; margin-top: 16px;
+            color: rgba(100,116,139,0.7); font-size: 0.82rem;
+            text-decoration: none; transition: color 0.2s;
+        }
+        .skip-link:hover { color: #94a3b8; }
+
+        @media (max-width: 640px) {
+            .onboard-card { padding: 32px 24px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+
+    <div class="onboard-wrapper">
+        <div class="onboard-card">
+            <!-- Step indicators -->
+            <div class="step-dots" id="step-dots">
+                <div class="step-dot active" id="dot-0"></div>
+                <div class="step-dot" id="dot-1"></div>
+                <div class="step-dot" id="dot-2"></div>
+                <div class="step-dot" id="dot-3"></div>
+                <div class="step-dot" id="dot-4"></div>
+            </div>
+
+            <!-- Slide 0: Welcome -->
+            <div class="slide active" id="slide-0">
+                <span class="slide-icon">🏛️</span>
+                <div class="slide-badge">Welcome, {{ username }}</div>
+                <h1>Your <span>Vault is Open</span></h1>
+                <p>YourTreasurer is your personal campus finance command center. In the next 60 seconds, we'll show you exactly how to master your money every single month.</p>
+                <button class="btn-next" onclick="nextSlide()">
+                    Start Tour <span>→</span>
+                </button>
+            </div>
+
+            <!-- Slide 1: Expense Tracking -->
+            <div class="slide" id="slide-1">
+                <span class="slide-icon">⚡</span>
+                <div class="slide-badge">Feature 01 · Quick Logging</div>
+                <h1>Log Any Expense <span>in Seconds</span></h1>
+                <p>Use the <strong style="color:#38bdf8">floating ＋ button</strong> on any page to instantly log a transaction — no navigation needed.</p>
+                <div class="feature-row">
+                    <div class="feature-item">
+                        <div class="feature-item-icon">🏠</div>
+                        <div class="feature-item-text">
+                            <h4>Home Dashboard</h4>
+                            <p>Real-time budget ring that updates as you spend. Never lose track of your remaining balance.</p>
+                        </div>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-item-icon">📋</div>
+                        <div class="feature-item-text">
+                            <h4>My Expenses</h4>
+                            <p>Full history of every transaction, with photo receipt proof and category filters.</p>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn-next" onclick="nextSlide()">Next <span>→</span></button>
+            </div>
+
+            <!-- Slide 2: Loans & Intervals -->
+            <div class="slide" id="slide-2">
+                <span class="slide-icon">🤝</span>
+                <div class="slide-badge">Feature 02 · Social Finance</div>
+                <h1>Never <span>Lose Track</span> of Money</h1>
+                <p>Log money you lend to friends and track recurring bills automatically.</p>
+                <div class="feature-row">
+                    <div class="feature-item">
+                        <div class="feature-item-icon">💸</div>
+                        <div class="feature-item-text">
+                            <h4>Friend Loans</h4>
+                            <p>Record a loan and YourTreasurer emails your friend automatically. One-click reminder sends a polite follow-up.</p>
+                        </div>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-item-icon">🔄</div>
+                        <div class="feature-item-text">
+                            <h4>Interval Spend</h4>
+                            <p>Set up recurring bills like hostel rent. Get email reminders 3 days before they're due.</p>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn-next" onclick="nextSlide()">Next <span>→</span></button>
+            </div>
+
+            <!-- Slide 3: Analysis & Alerts -->
+            <div class="slide" id="slide-3">
+                <span class="slide-icon">📊</span>
+                <div class="slide-badge">Feature 03 · Intelligent Insights</div>
+                <h1>Your Money's <span>Story in Data</span></h1>
+                <div class="feature-row">
+                    <div class="feature-item">
+                        <div class="feature-item-icon">🔮</div>
+                        <div class="feature-item-text">
+                            <h4>Spending Analysis</h4>
+                            <p>Beautiful charts showing your category breakdown, trends, and highest spend areas each month.</p>
+                        </div>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-item-icon">🚨</div>
+                        <div class="feature-item-text">
+                            <h4>Guardian Alerts</h4>
+                            <p>Automatic email alerts when you hit 10%, 5%, or 0% remaining budget — <em>before</em> you overspend.</p>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn-next" onclick="nextSlide()">Final Step <span>✨</span></button>
+            </div>
+
+            <!-- Slide 4: Set Budget -->
+            <div class="slide" id="slide-4">
+                <span class="slide-icon">🎯</span>
+                <div class="slide-badge">Step 04 · Set Your Limit</div>
+                <h1>Set Your <span>Monthly Budget</span></h1>
+                <p>This is the maximum you can spend in a 30-day cycle. Choose wisely — every rupee counts!</p>
+                <form action="/set_budget" method="POST">
+                    <div class="budget-input-wrap">
+                        <span class="budget-symbol">₹</span>
+                        <input type="number" name="monthly_limit" id="budget-val" class="budget-input"
+                               placeholder="e.g. 10000" min="100" max="1000000" required>
+                    </div>
+                    <div class="budget-suggestions">
+                        <span class="budget-chip" onclick="setBudget(5000)">₹5,000</span>
+                        <span class="budget-chip" onclick="setBudget(8000)">₹8,000</span>
+                        <span class="budget-chip" onclick="setBudget(10000)">₹10,000</span>
+                        <span class="budget-chip" onclick="setBudget(15000)">₹15,000</span>
+                        <span class="budget-chip" onclick="setBudget(20000)">₹20,000</span>
+                    </div>
+                    <button type="submit" class="btn-next btn-success">
+                        🚀 Open My Vault
+                    </button>
+                </form>
+            </div>
+
+            <a href="/" class="skip-link" id="skip-link">Skip tour and go to dashboard →</a>
+        </div>
+    </div>
+
+    <script>
+        let currentSlide = 0;
+        const totalSlides = 5;
+
+        function nextSlide() {
+            if (currentSlide >= totalSlides - 1) return;
+            document.getElementById('slide-' + currentSlide).classList.remove('active');
+            document.getElementById('dot-' + currentSlide).classList.remove('active');
+            document.getElementById('dot-' + currentSlide).classList.add('done');
+            currentSlide++;
+            document.getElementById('slide-' + currentSlide).classList.add('active');
+            document.getElementById('dot-' + currentSlide).classList.add('active');
+
+            // Hide skip link on budget slide
+            if (currentSlide === totalSlides - 1) {
+                document.getElementById('skip-link').style.display = 'none';
+            }
+        }
+
+        function setBudget(amount) {
+            document.getElementById('budget-val').value = amount;
+        }
+    </script>
+</body>
+</html>

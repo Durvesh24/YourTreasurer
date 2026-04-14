@@ -53,6 +53,7 @@
     <!-- HERO & DASHBOARD SECTION -->
     <main class="hero">
         {% if session.get('username') and user %}
+        <div id="user-budget-data" data-spent="{{ user.total_spent }}" data-limit="{{ user.monthly_limit }}" style="display:none;"></div>
         <div class="dashboard-content" style="width: 100%; max-width: 900px; margin: 0 auto; text-align: left; animation: fadeUp .6s ease forwards; padding-top: 40px;">
             <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom: 30px;">
                 <div>
@@ -98,26 +99,54 @@
         </div>
         {% else %}
         <div class="hero-content">
-            <h1 class="hero-title">
+            <div class="trust-banner fade-in-up" style="animation-delay: 0.1s;">
+                <span class="trust-icon">🔒</span>
+                256-Bit Bank-Grade Encryption
+            </div>
+            
+            <h1 class="hero-title fade-in-up" style="animation-delay: 0.2s;">
                 Your Campus<br>
                 <span class="hero-accent">Budget Vault</span>
             </h1>
-            <p class="hero-sub">
+            
+            <p class="hero-sub fade-in-up" style="animation-delay: 0.3s;">
                 Track every rupee. Log loans to friends. Never run out of
-                money before the month ends.
+                money before the month ends. Built like a fortress.
             </p>
 
-            <div class="hero-actions">
-                <a href="/my_profile" class="btn-primary">Get Started</a>
-                <a href="/about_us" class="btn-ghost">Learn More</a>
+            <div class="hero-actions fade-in-up" style="animation-delay: 0.4s;">
+                <a href="/my_profile" class="btn-primary">Secure Login <span class="arrow">→</span></a>
+                <a href="/about_us" class="btn-ghost">How It Works</a>
             </div>
 
-            <div class="feature-pills">
-                <span class="pill">Daily Expense Tracking</span>
-                <span class="pill">Friend Loan Manager</span>
-                <span class="pill">Budget Alerts</span>
-                <span class="pill">Spending Analysis</span>
+            <!-- Trust Grid -->
+            <div class="trust-grid fade-in-up" style="animation-delay: 0.5s;">
+                <div class="trust-card">
+                    <div class="trust-card-icon">🛡️</div>
+                    <div class="trust-card-text">
+                        <h4>Private by Design</h4>
+                        <p>Your expenses are yours alone. Non-trackable.</p>
+                    </div>
+                </div>
+                <div class="trust-card">
+                    <div class="trust-card-icon">☁️</div>
+                    <div class="trust-card-text">
+                        <h4>Cloud Backup</h4>
+                        <p>Secure Cloudinary receipt & data sync.</p>
+                    </div>
+                </div>
+                <div class="trust-card">
+                    <div class="trust-card-icon">👁️</div>
+                    <div class="trust-card-text">
+                        <h4>100% Transparent</h4>
+                        <p>Export your data anytime. Zero lock-in.</p>
+                    </div>
+                </div>
             </div>
+            
+            <p class="transparency-note fade-in-up" style="animation-delay: 0.6s;">
+                <span class="pulse-dot"></span> Your privacy is our priority. No ads, no data mining.
+            </p>
         </div>
         {% endif %}
     </main>
@@ -183,12 +212,13 @@
     // ==========================================
     // TASK 14 & 15: REAL-TIME DASHBOARD ENGINE
     // ==========================================
-    {% if session.get('username') and user %}
-    let currentSpent = {{ user.total_spent }};
-    const maxLimit = {{ user.monthly_limit }};
-    const pBar = document.getElementById('budget-progress-bar');
-    const pText = document.getElementById('budget-percentage');
-    const spentLabel = document.getElementById('spent-label');
+    const budgetDataEl = document.getElementById('user-budget-data');
+    if (budgetDataEl) {
+        let currentSpent = parseFloat(budgetDataEl.dataset.spent) || 0;
+        const maxLimit = parseFloat(budgetDataEl.dataset.limit) || 0;
+        const pBar = document.getElementById('budget-progress-bar');
+        const pText = document.getElementById('budget-percentage');
+        const spentLabel = document.getElementById('spent-label');
 
     function syncProgressBar(spent) {
         if (maxLimit <= 0) return;
@@ -289,7 +319,7 @@
             btn.disabled = false; btn.innerHTML = 'Log It 🚀';
         }
     }
-    {% endif %}
+    }
     </script>
     <style>
         @keyframes red-pulse {
@@ -297,7 +327,5 @@
             100% { box-shadow: inset 0 0 20px rgba(239,68,68,1), 0 0 30px rgba(239,68,68,1); }
         }
     </style>
-    {% if session.get('username') %}
-    {% endif %}
 </body>
 </html>
