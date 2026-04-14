@@ -1,14 +1,7 @@
-flask
-pymongo
+Flask
+pymongo[srv]
+dnspython
 python-dotenv
 cloudinary
 certifi
 python-dateutil
-flask
-pymongo[srv]
-flask-mail
-cloudinary
-python-dotenv
-flask-cors
-requests
-Werkzeug
