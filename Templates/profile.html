@@ -189,57 +189,94 @@
                     <span class="btn-text">Unlock Vault</span>
                     <span class="btn-icon">🚀</span>
                 </button>
+
+                <div class="auth-links-row">
+                    <a class="auth-link" href="{{ url_for('auth_reset_start') }}">Forgot password?</a>
+                </div>
             </form>
 
-            <!-- ===== REGISTER FORM ===== -->
+            <!-- ===== REGISTER FORM (Multi-Step Wizard) ===== -->
             <form id="form-register" class="gateway-form" action="/my_profile" method="POST">
                 <input type="hidden" name="form_type" value="register">
+                <!-- Step hidden fields populated by JS before submit -->
+                <input type="hidden" id="reg-name-hidden" name="name">
+                <input type="hidden" id="reg-email-hidden" name="email">
+                <input type="hidden" id="reg-contact-hidden" name="contact">
+                <input type="hidden" id="reg-password-hidden" name="password">
 
-                <div class="input-group">
-                    <label for="reg-name">Full Name</label>
-                    <div class="input-wrapper">
-                        <span class="input-icon">👤</span>
-                        <input type="text" id="reg-name" name="name"
-                               placeholder="Enter your full name" required autocomplete="off">
-                    </div>
+                <!-- Step Progress Tracker -->
+                <div class="reg-steps" id="reg-steps">
+                    <div class="reg-step active" id="rstep-1">1</div>
+                    <div class="reg-step-line"></div>
+                    <div class="reg-step" id="rstep-2">2</div>
                 </div>
 
-                <div class="input-group">
-                    <label for="reg-password">Create Password</label>
-                    <div class="input-wrapper">
-                        <span class="input-icon">&#128273;</span>
-                        <input type="password" id="reg-password" name="password"
-                               placeholder="Min 8 chars, A-Z, a-z, 0-9" required>
-                        <button type="button" class="eye-toggle" onclick="togglePass('reg-password', this)">&#128065;</button>
+                <!-- STEP 1: Identity -->
+                <div id="reg-s1">
+                    <p class="step-helper">Let's start with the basics</p>
+                    <div class="input-group">
+                        <label for="reg-name">Full Name</label>
+                        <div class="input-wrapper">
+                            <span class="input-icon">👤</span>
+                            <input type="text" id="reg-name" placeholder="Enter your full name" autocomplete="off">
+                        </div>
                     </div>
-                    <div class="strength-track">
-                        <div class="strength-bar" id="reg-strength-bar"></div>
+                    <div class="input-group">
+                        <label for="reg-email">Email Address</label>
+                        <div class="input-wrapper">
+                            <span class="input-icon">📧</span>
+                            <input type="email" id="reg-email" placeholder="you@example.com">
+                        </div>
                     </div>
-                    <span class="strength-label" id="reg-strength-label"></span>
+                    <div class="input-group">
+                        <label for="reg-contact">Contact Number</label>
+                        <div class="input-wrapper">
+                            <span class="input-icon">📱</span>
+                            <input type="tel" id="reg-contact" placeholder="10-digit mobile number" maxlength="10" pattern="[0-9]{10}">
+                        </div>
+                    </div>
+                    <button type="button" class="gateway-btn" onclick="regNextStep()">
+                        <span class="btn-text">Continue</span>
+                        <span class="btn-icon">→</span>
+                    </button>
                 </div>
 
-                <div class="input-group">
-                    <label for="reg-limit">Monthly Budget (₹)</label>
-                    <div class="input-wrapper">
-                        <span class="input-icon">💰</span>
-                        <input type="number" id="reg-limit" name="monthly_limit"
-                               placeholder="e.g. 10000" min="100" required>
+                <!-- STEP 2: Security -->
+                <div id="reg-s2" style="display:none;">
+                    <p class="step-helper">Now secure your vault</p>
+                    <div class="input-group">
+                        <label for="reg-password">Create Password</label>
+                        <div class="input-wrapper">
+                            <span class="input-icon">🔑</span>
+                            <input type="password" id="reg-password" placeholder="Min 8 chars · Upper · Lower · Number">
+                            <button type="button" class="eye-toggle" onclick="togglePass('reg-password', this)">&#128065;</button>
+                        </div>
+                        <div class="strength-track"><div class="strength-bar" id="reg-strength-bar"></div></div>
+                        <!-- Live requirements checklist -->
+                        <div class="pwd-reqs" id="pwd-reqs">
+                            <span class="req" id="req-len">◦ At least 8 characters</span>
+                            <span class="req" id="req-upper">◦ One uppercase letter (A–Z)</span>
+                            <span class="req" id="req-lower">◦ One lowercase letter (a–z)</span>
+                            <span class="req" id="req-digit">◦ One number (0–9)</span>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label for="reg-confirm">Confirm Password</label>
+                        <div class="input-wrapper">
+                            <span class="input-icon">✅</span>
+                            <input type="password" id="reg-confirm" placeholder="Re-enter password">
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:10px;">
+                        <button type="button" class="gateway-btn" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); flex:0.4;" onclick="regPrevStep()">
+                            <span class="btn-text">Back</span>
+                        </button>
+                        <button type="button" class="gateway-btn register-btn" style="flex:1;" onclick="regSubmit()">
+                            <span class="btn-text">Create My Vault</span>
+                            <span class="btn-icon">✨</span>
+                        </button>
                     </div>
                 </div>
-
-                <div class="input-group">
-                    <label for="reg-email">Email Address</label>
-                    <div class="input-wrapper">
-                        <span class="input-icon">📧</span>
-                        <input type="email" id="reg-email" name="email"
-                               placeholder="you@example.com" required>
-                    </div>
-                </div>
-
-                <button type="submit" class="gateway-btn register-btn" id="register-btn">
-                    <span class="btn-text">Create My Vault</span>
-                    <span class="btn-icon">✨</span>
-                </button>
             </form>
 
         </div>
@@ -316,16 +353,23 @@
         // ── PASSWORD — min 8, uppercase + lowercase + digit, no spaces ────
         function validatePasswordField(id) {
             const val = document.getElementById(id).value;
-            if (val.length < 6)               { showInlineError(id, 'Password must be at least 6 characters.'); return false; }
-            if (!/[A-Za-z]/.test(val))        { showInlineError(id, 'Password must contain at least one letter.'); return false; }
-            if (!/\d/.test(val))              { showInlineError(id, 'Password must contain at least one number.'); return false; }
+            if (!val)                         { showInlineError(id, 'Password is required.'); return false; }
+            if (val.includes(' '))            { showInlineError(id, 'Password cannot contain spaces.'); return false; }
+            if (val.length < 8)               { showInlineError(id, 'Password must be at least 8 characters.'); return false; }
+            if (val.length > 64)              { showInlineError(id, 'Password cannot exceed 64 characters.'); return false; }
+            if (!/[A-Z]/.test(val))           { showInlineError(id, 'Must contain at least one uppercase letter (A–Z).'); return false; }
+            if (!/[a-z]/.test(val))           { showInlineError(id, 'Must contain at least one lowercase letter (a–z).'); return false; }
+            if (!/\d/.test(val))              { showInlineError(id, 'Must contain at least one number (0–9).'); return false; }
             clearInlineError(id); markValid(id); return true;
         }
 
         function validateEmailField(id) {
             const val = document.getElementById(id).value.trim();
-            if (!val)                         { showInlineError(id, 'Email is required.'); return false; }
+            const blocked = ['mailinator.com','guerrillamail.com','trashmail.com','tempmail.com','throwaway.email','yopmail.com'];
+            if (!val)                         { showInlineError(id, 'Email address is required.'); return false; }
             if (!EMAIL_RE.test(val))          { showInlineError(id, 'Enter a valid email, e.g. you@gmail.com'); return false; }
+            const domain = val.split('@')[1]?.toLowerCase();
+            if (blocked.includes(domain))     { showInlineError(id, 'Please use a real email, not a disposable address.'); return false; }
             clearInlineError(id); markValid(id); return true;
         }
 
@@ -344,7 +388,6 @@
             { id: 'reg-name',     fn: () => validateNameField('reg-name') },
             { id: 'reg-password', fn: () => validatePasswordField('reg-password') },
             { id: 'reg-email',    fn: () => validateEmailField('reg-email') },
-            { id: 'reg-limit',    fn: () => validateBudgetField('reg-limit') },
         ];
         [...loginFields, ...regFields].forEach(({ id, fn }) => {
             const el = document.getElementById(id);
@@ -353,6 +396,48 @@
                 el.addEventListener('input', () => { clearInlineError(id); el.style.borderColor = ''; });
             }
         });
+        // Contact blur validation
+        const contactEl = document.getElementById('reg-contact');
+        if (contactEl) {
+            contactEl.addEventListener('blur', () => {
+                const c = contactEl.value.trim();
+                if (!/^[0-9]{10}$/.test(c)) { showInlineError('reg-contact', 'Enter a valid 10-digit mobile number (digits only).'); }
+                else { clearInlineError('reg-contact'); markValid('reg-contact'); }
+            });
+            contactEl.addEventListener('input', () => {
+                // Only allow digits
+                contactEl.value = contactEl.value.replace(/\D/g, '').slice(0, 10);
+                clearInlineError('reg-contact'); contactEl.style.borderColor = '';
+            });
+        }
+
+        // Live password requirements checker
+        const regPwdEl = document.getElementById('reg-password');
+        if (regPwdEl) {
+            regPwdEl.addEventListener('input', () => {
+                const v = regPwdEl.value;
+                const check = (id, cond) => {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    el.classList.toggle('req-ok', cond);
+                    el.textContent = (cond ? '✓ ' : '◦ ') + el.textContent.replace(/^[✓◦] /, '');
+                };
+                check('req-len',   v.length >= 8);
+                check('req-upper', /[A-Z]/.test(v));
+                check('req-lower', /[a-z]/.test(v));
+                check('req-digit', /\d/.test(v));
+
+                // Strength bar
+                const bar = document.getElementById('reg-strength-bar');
+                if (bar) {
+                    const score = [v.length >= 8, /[A-Z]/.test(v), /[a-z]/.test(v), /\d/.test(v)].filter(Boolean).length;
+                    const colors = ['', '#ef4444', '#f59e0b', '#38bdf8', '#10b981'];
+                    bar.style.width = (score * 25) + '%';
+                    bar.style.background = colors[score];
+                    bar.style.transition = 'width 0.3s ease, background 0.3s ease';
+                }
+            });
+        }
 
         // ── Form submit — validate before sending to server ───────────────
         const formLogin = document.getElementById('form-login');
@@ -368,17 +453,82 @@
         }
 
         const formRegister = document.getElementById('form-register');
-        if (formRegister) {
-            formRegister.addEventListener('submit', function(e) {
-                const nameOk   = validateNameField('reg-name');
-                const passOk   = validatePasswordField('reg-password');
-                const emailOk  = validateEmailField('reg-email');
-                const budgetOk = validateBudgetField('reg-limit');
-                if (!nameOk || !passOk || !emailOk || !budgetOk) { e.preventDefault(); return; }
-                const btn = document.getElementById('register-btn');
-                btn.innerHTML = '<span class="btn-text">Creating Vault...</span> <span class="btn-icon">⏳</span>';
-                btn.disabled = true;
-            });
+
+        // ─── Multi-Step Wizard Logic ───────────────────────────────────────
+        function regNextStep() {
+            const name    = document.getElementById('reg-name');
+            const email   = document.getElementById('reg-email');
+            const contact = document.getElementById('reg-contact');
+
+            let ok = true;
+            if (!validateNameField('reg-name'))   ok = false;
+            if (!validateEmailField('reg-email'))  ok = false;
+            const c = contact.value.trim();
+            if (!/^[0-9]{10}$/.test(c)) {
+                showInlineError('reg-contact', 'Enter a valid 10-digit mobile number.');
+                ok = false;
+            } else { clearInlineError('reg-contact'); markValid('reg-contact'); }
+
+            if (!ok) return;
+
+            // Animate transition
+            const s1 = document.getElementById('reg-s1');
+            s1.style.opacity = '0';
+            s1.style.transform = 'translateX(-20px)';
+            setTimeout(() => {
+                s1.style.display = 'none';
+                const s2 = document.getElementById('reg-s2');
+                s2.style.display = 'block';
+                s2.style.opacity = '0';
+                s2.style.transform = 'translateX(20px)';
+                requestAnimationFrame(() => {
+                    s2.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+                    s2.style.opacity = '1';
+                    s2.style.transform = 'translateX(0)';
+                });
+                // Activate step 2 indicator
+                document.getElementById('rstep-2').classList.add('active');
+            }, 300);
+        }
+
+        function regPrevStep() {
+            const s2 = document.getElementById('reg-s2');
+            s2.style.opacity = '0';
+            s2.style.transform = 'translateX(20px)';
+            setTimeout(() => {
+                s2.style.display = 'none';
+                const s1 = document.getElementById('reg-s1');
+                s1.style.display = 'block';
+                s1.style.opacity = '0';
+                s1.style.transform = 'translateX(-20px)';
+                requestAnimationFrame(() => {
+                    s1.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+                    s1.style.opacity = '1';
+                    s1.style.transform = 'translateX(0)';
+                });
+                document.getElementById('rstep-2').classList.remove('active');
+            }, 280);
+        }
+
+        function regSubmit() {
+            const passOk    = validatePasswordField('reg-password');
+            const confirm   = document.getElementById('reg-confirm').value;
+            const password  = document.getElementById('reg-password').value;
+
+            if (!passOk) return;
+            if (password !== confirm) {
+                showInlineError('reg-confirm', 'Passwords do not match.');
+                return;
+            }
+            clearInlineError('reg-confirm'); markValid('reg-confirm');
+
+            // Populate hidden fields then submit
+            document.getElementById('reg-name-hidden').value     = document.getElementById('reg-name').value.trim();
+            document.getElementById('reg-email-hidden').value    = document.getElementById('reg-email').value.trim();
+            document.getElementById('reg-contact-hidden').value  = document.getElementById('reg-contact').value.trim();
+            document.getElementById('reg-password-hidden').value = password;
+
+            formRegister.submit();
         }
 
         // ═══════════════════════════════════════════════════

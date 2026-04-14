@@ -224,6 +224,43 @@ body.profile-page { overflow-y: auto !important; }
     transform: scale(.97); box-shadow: 0 6px 18px rgba(37,99,235,.4);
 }
 
+.auth-links-row{
+    display:flex;
+    justify-content: space-between;
+    align-items:center;
+    margin-top: 10px;
+    gap: 12px;
+}
+.auth-link{
+    color: rgba(186,230,253,.65);
+    text-decoration: none;
+    font-size: .82rem;
+    font-weight: 600;
+    letter-spacing: .2px;
+    transition: color .2s ease, transform .2s ease;
+}
+.auth-link:hover{
+    color: #bae6fd;
+    transform: translateY(-1px);
+}
+.auth-link-btn{
+    background: transparent;
+    border: 1px solid rgba(186,230,253,.14);
+    color: rgba(186,230,253,.75);
+    padding: 8px 12px;
+    border-radius: 999px;
+    font-family: 'Poppins', sans-serif;
+    font-size: .8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .2s ease, border-color .2s ease, color .2s ease;
+}
+.auth-link-btn:hover{
+    background: rgba(56,189,248,.08);
+    border-color: rgba(56,189,248,.35);
+    color: #bae6fd;
+}
+
 .register-btn {
     background: linear-gradient(135deg, #065f46 0%, #059669 55%, #34d399 100%);
     box-shadow: 0 10px 30px rgba(5,150,105,.38);
@@ -443,4 +480,82 @@ body.profile-page { overflow-y: auto !important; }
     .detail-item { padding: 12px; flex-direction: column; align-items: flex-start; gap: 4px; }
     .export-btn { font-size: 0.85rem; padding: 10px; }
     .action-row .logout-btn, .delete-trigger-btn { font-size: 0.85rem; padding: 10px; }
+}
+
+/* ── Multi-Step Registration Wizard ─────────────────────────── */
+.reg-steps {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    margin-bottom: 24px;
+}
+
+.reg-step {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.85rem; font-weight: 700;
+    background: rgba(255, 255, 255, 0.06);
+    border: 2px solid rgba(255, 255, 255, 0.12);
+    color: rgba(186, 230, 253, 0.4);
+    transition: all 0.35s ease;
+}
+
+.reg-step.active {
+    background: linear-gradient(135deg, #3b82f6, #818cf8);
+    border-color: #818cf8;
+    color: #fff;
+    box-shadow: 0 0 18px rgba(129, 140, 248, 0.5);
+}
+
+.reg-step-line {
+    flex: 1;
+    max-width: 60px;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 0 8px;
+    border-radius: 2px;
+}
+
+.step-helper {
+    text-align: center;
+    font-size: 0.85rem;
+    color: rgba(186, 230, 253, 0.45);
+    margin-bottom: 18px;
+    letter-spacing: 0.3px;
+}
+
+#reg-s1, #reg-s2 {
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+/* \u2500\u2500 Live Password Requirements Checklist \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
+.pwd-reqs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 12px;
+    margin-top: 10px;
+    padding: 12px 14px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.05);
+}
+
+.req {
+    font-size: 0.77rem;
+    color: rgba(148, 163, 184, 0.6);
+    transition: color 0.25s ease;
+    font-family: 'Inter', 'Poppins', sans-serif;
+}
+
+.req.req-ok {
+    color: #34d399;
+}
+
+.inline-error {
+    font-size: 0.8rem;
+    color: #f87171;
+    margin-top: 6px;
+    padding-left: 4px;
 }

@@ -1,10 +1,10 @@
 from flask import Flask, render_template, request, flash, redirect, url_for, jsonify, session, Response
 import csv, io
 from werkzeug.security import generate_password_hash, check_password_hash
-import os, re, threading, ssl, certifi
+import os, re, threading, ssl, certifi, time, secrets, hmac, hashlib
 from pymongo import MongoClient
 from bson.objectid import ObjectId
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import cloudinary
 import cloudinary.uploader
@@ -77,8 +77,21 @@ mongo.connect(_mongo_uri)
 with app.app_context():
     if mongo.db is not None:
         try:
-            mongo.db.users.create_index([("name_lower", 1)], unique=True, name="unique_name")
-            mongo.db.users.create_index([("email_lower", 1)], unique=True, name="unique_email")
+            def _create_index_safe(collection, keys, **kwargs):
+                try:
+                    collection.create_index(keys, **kwargs)
+                    return True
+                except Exception as e:
+                    # Atlas may already have the same index under a different name (code 85).
+                    code = getattr(e, "code", None)
+                    if code == 85:
+                        return False
+                    raise
+
+            _create_index_safe(mongo.db.users, [("name_lower", 1)], unique=True, name="unique_name")
+            _create_index_safe(mongo.db.users, [("email_lower", 1)], unique=True, name="unique_email")
+            _create_index_safe(mongo.db.email_otps, [("expires_at", 1)], expireAfterSeconds=0, name="ttl_expires_at")
+            _create_index_safe(mongo.db.email_otps, [("email_lower", 1), ("purpose", 1)], unique=True, name="unique_email_purpose")
             print("[DB] Indexes ready.")
         except Exception as e:
             print(f"[DB] Index note: {e}")
@@ -142,7 +155,34 @@ def validate_budget(value):
 # ──────────────────────────────────────────────────────────────
 # AUTH GUARD — Zero-Persistence (every request)
 # ──────────────────────────────────────────────────────────────
-_PUBLIC = {'home', 'my_profile', 'logout', 'about_us', 'static'}
+_PUBLIC = {
+    'home', 'my_profile', 'logout', 'about_us', 'onboarding', 'set_budget', 'static',
+    'auth_register_verify', 'auth_otp_resend', 'auth_reset_start', 'auth_reset_verify',
+}
+
+@app.before_request
+def enforce_session_timeout():
+    if request.endpoint in _PUBLIC or request.endpoint is None:
+        return
+    if 'username' not in session:
+        return
+
+    now = time.time()
+    last = session.get('last_activity')
+    if last is not None:
+        try:
+            if (now - float(last)) > (15 * 60):
+                username = session.get('username', 'User')
+                session.clear()
+                flash('Session expired due to inactivity. Please log in again.', 'warning')
+                return redirect(url_for('my_profile'))
+        except Exception:
+            # If last_activity is corrupted, fail closed
+            session.clear()
+            flash('Session expired. Please log in again.', 'warning')
+            return redirect(url_for('my_profile'))
+
+    session['last_activity'] = now
 
 @app.before_request
 def require_login():
@@ -166,6 +206,150 @@ EXPENSE_CATEGORIES = [
 import smtplib
 from email.message import EmailMessage
 import ssl
+
+def _otp_payload(email_lower: str, purpose: str, otp: str) -> str:
+    return f"{email_lower}:{purpose}:{otp}"
+
+def generate_otp() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+def hash_otp(email_lower: str, purpose: str, otp: str) -> str:
+    key = (app.secret_key or "").encode("utf-8")
+    payload = _otp_payload(email_lower, purpose, otp).encode("utf-8")
+    return hmac.new(key, payload, hashlib.sha256).hexdigest()
+
+def verify_otp_hash(email_lower: str, purpose: str, otp: str, otp_hash: str) -> bool:
+    if not otp or not otp_hash:
+        return False
+    expected = hash_otp(email_lower, purpose, otp)
+    return hmac.compare_digest(expected, otp_hash)
+
+def _mask_email(email: str) -> str:
+    e = (email or "").strip()
+    if "@" not in e:
+        return e
+    local, domain = e.split("@", 1)
+    if len(local) <= 2:
+        masked_local = local[:1] + "*"
+    else:
+        masked_local = local[:2] + ("*" * max(1, len(local) - 2))
+    return f"{masked_local}@{domain}"
+
+def send_otp_email_async(to_email: str, purpose: str, otp: str):
+    sender = os.environ.get("MAIL_USER", "")
+    password = os.environ.get("MAIL_PASS", "")
+    if not sender or not password or sender == "your_email@gmail.com":
+        print("[Mail] Skipping OTP email; MAIL_USER or MAIL_PASS not configured in .env")
+        return
+
+    purpose_title = "verification" if purpose == "register" else "password reset"
+    subject = f"YourTreasurer {purpose_title} code: {otp}"
+
+    msg = EmailMessage()
+    msg["From"] = f"YourTreasurer Security <{sender}>"
+    msg["To"] = to_email
+    msg["Subject"] = subject
+
+    expires_minutes = 10
+    html = f"""
+    <html>
+    <body style="background-color:#f1f5f9; color:#0f172a; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; padding:24px;">
+      <div style="max-width:560px; margin:0 auto; background:#ffffff; border-radius:16px; padding:28px; border:1px solid #e2e8f0; box-shadow: 0 12px 30px rgba(2,6,23,0.08);">
+        <div style="text-align:center; padding-bottom:14px; border-bottom:1px solid #e2e8f0;">
+          <div style="font-size:12px; font-weight:800; letter-spacing:2px; text-transform:uppercase; color:#2563eb;">YourTreasurer Security</div>
+          <h1 style="margin:10px 0 0; font-size:20px;">Your {purpose_title} code</h1>
+        </div>
+        <p style="margin:18px 0 10px; color:#334155; font-size:14.5px; line-height:1.6;">
+          Use the code below to complete your {purpose_title} request. This code expires in <strong>{expires_minutes} minutes</strong>.
+        </p>
+        <div style="margin:18px 0; text-align:center;">
+          <div style="display:inline-block; font-size:28px; letter-spacing:6px; font-weight:900; padding:14px 18px; border-radius:14px; background:#eff6ff; border:1px solid #bfdbfe; color:#1d4ed8;">
+            {otp}
+          </div>
+        </div>
+        <p style="margin:10px 0 0; color:#64748b; font-size:12.5px; line-height:1.6;">
+          If you didn’t request this, you can safely ignore this email.
+        </p>
+      </div>
+      <div style="max-width:560px; margin:10px auto 0; text-align:center; color:#94a3b8; font-size:11px; letter-spacing:0.4px;">
+        Automatically generated — do not reply.
+      </div>
+    </body>
+    </html>
+    """
+
+    msg.set_content(f"YourTreasurer {purpose_title} code: {otp}\nExpires in 10 minutes.\nIf you didn’t request this, ignore.")
+    msg.add_alternative(html, subtype="html")
+
+    try:
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
+            server.login(sender, password)
+            server.send_message(msg)
+        print(f"[Mail] OTP dispatched to {to_email} ({purpose})")
+    except Exception as e:
+        print(f"[Mail] Failed to send OTP to {to_email}. Error: {e}")
+
+def _otp_can_send(existing: dict | None) -> tuple[bool, str]:
+    if not existing:
+        return True, ""
+
+    last_sent_at = existing.get("last_sent_at")
+    if last_sent_at and (datetime.utcnow() - last_sent_at).total_seconds() < 60:
+        return False, "Please wait a moment before requesting a new code."
+
+    window_start = existing.get("send_window_start")
+    send_count = int(existing.get("send_count", 0) or 0)
+    if not window_start or (datetime.utcnow() - window_start) > timedelta(hours=1):
+        return True, ""
+    if send_count >= 5:
+        return False, "Too many codes requested. Please try again later."
+
+    return True, ""
+
+def upsert_and_send_otp(email_lower: str, purpose: str, ip: str | None = None) -> tuple[bool, str]:
+    if mongo.db is None:
+        return False, "Database unavailable. Please try again."
+
+    existing = mongo.db.email_otps.find_one({"email_lower": email_lower, "purpose": purpose})
+    ok, msg = _otp_can_send(existing)
+    if not ok:
+        return False, msg
+
+    otp = generate_otp()
+    now = datetime.utcnow()
+    expires_at = now + timedelta(minutes=10)
+
+    update = {
+        "$set": {
+            "otp_hash": hash_otp(email_lower, purpose, otp),
+            "created_at": now,
+            "expires_at": expires_at,
+            "attempt_count": 0,
+            "last_sent_at": now,
+        },
+        "$setOnInsert": {
+            "email_lower": email_lower,
+            "purpose": purpose,
+            "send_window_start": now,
+        },
+        "$inc": {"send_count": 1},
+    }
+    if existing and existing.get("send_window_start") and (now - existing["send_window_start"]) > timedelta(hours=1):
+        update["$set"]["send_window_start"] = now
+        update["$set"]["send_count"] = 1
+        update.pop("$inc", None)
+    if ip:
+        update["$set"]["ip"] = ip
+
+    mongo.db.email_otps.update_one(
+        {"email_lower": email_lower, "purpose": purpose},
+        update,
+        upsert=True,
+    )
+
+    threading.Thread(target=send_otp_email_async, args=(email_lower, purpose, otp), daemon=True).start()
+    return True, "Verification code sent."
 
 def send_alert_email_async(to_email, username, tier, limit, balance, spent, category=None, velocity_msg="", safepoint_msg=""):
     sender = os.environ.get('MAIL_USER', '')
@@ -513,6 +697,43 @@ def home():
             return render_template('index.html', user=user)
     return render_template('index.html')
 
+@app.route('/about_us')
+def about_us():
+    """Information and transparency page."""
+    return render_template('about_us.html')
+
+
+@app.route('/onboarding')
+def onboarding():
+    """New user onboarding walkthrough — shown once after registration."""
+    if 'username' not in session:
+        return redirect(url_for('my_profile'))
+    return render_template('onboarding.html', username=session['username'])
+
+
+@app.route('/set_budget', methods=['POST'])
+def set_budget():
+    """Final onboarding step — user sets their monthly budget."""
+    if 'username' not in session:
+        return redirect(url_for('my_profile'))
+    monthly_limit = request.form.get('monthly_limit', '').strip()
+    budget_err = validate_budget(monthly_limit)
+    if budget_err:
+        flash(budget_err, 'error')
+        return redirect(url_for('onboarding'))
+    limit = float(monthly_limit)
+    mongo.db.users.update_one(
+        {'name': session['username']},
+        {'$set': {
+            'monthly_limit': limit,
+            'balance': limit,
+            'onboarding_done': True
+        }}
+    )
+    session.pop('show_onboarding', None)
+    flash(f"🎉 Vault is ready! Your ₹{limit:,.0f} monthly budget is set.", 'success')
+    return redirect(url_for('home'))
+
 
 @app.route('/my_profile', methods=['GET', 'POST'])
 def my_profile():
@@ -547,16 +768,12 @@ def my_profile():
 
         # ── REGISTER ───────────────────────────────────────────────────────
         if form_type == 'register':
-            email         = request.form.get('email', '').strip().lower()
-            monthly_limit = request.form.get('monthly_limit', '').strip()
+            email   = request.form.get('email', '').strip().lower()
+            contact = request.form.get('contact', '').strip()
 
             email_err = validate_email(email)
             if email_err:
                 flash(email_err, 'error'); return redirect(url_for('my_profile'))
-
-            budget_err = validate_budget(monthly_limit)
-            if budget_err:
-                flash(budget_err, 'error'); return redirect(url_for('my_profile'))
 
             if users.find_one({'name_lower': name.lower()}):
                 flash(f'The name "{name}" is already taken. Please choose another.', 'error')
@@ -566,27 +783,22 @@ def my_profile():
                 flash('This email is already registered. Please log in instead.', 'error')
                 return redirect(url_for('my_profile'))
 
-            now = datetime.utcnow()
-            try:
-                users.insert_one({
-                    'name': name, 'name_lower': name.lower(),
-                    'email': email, 'email_lower': email,
-                    'password': generate_password_hash(password, method='pbkdf2:sha256', salt_length=16),
-                    'monthly_limit': float(monthly_limit),
-                    'total_spent': 0.0, 'balance': float(monthly_limit),
-                    'start_date': now, 'cycle_number': 1,
-                    'alert_10_sent': False, 'alert_5_sent': False, 'over_budget': False,
-                    'created_at': now, 'last_login': now, 'login_count': 1,
-                })
-            except Exception as e:
-                print(f"[DB] Register error: {e}")
-                flash('Could not create account. Please try again.', 'error')
+            password_hash = generate_password_hash(password, method='pbkdf2:sha256', salt_length=16)
+            session['pending_register'] = {
+                'name': name,
+                'email': email,
+                'contact': contact,
+                'password_hash': password_hash,
+            }
+
+            ok, msg = upsert_and_send_otp(email_lower=email, purpose='register', ip=request.remote_addr)
+            if not ok:
+                session.pop('pending_register', None)
+                flash(msg, 'error')
                 return redirect(url_for('my_profile'))
 
-            session['username'] = name
-            session['email'] = email
-            flash(f'Welcome aboard, {name}! Your vault is ready.', 'success')
-            return redirect(url_for('home'))
+            flash('Verification code sent. Please verify your email to create your vault.', 'success')
+            return redirect(url_for('auth_register_verify'))
 
         # ── LOGIN ───────────────────────────────────────────────────────────
         elif form_type == 'login':
@@ -630,6 +842,7 @@ def my_profile():
 
             session['username'] = user['name']
             session['email']    = user.get('email', '')
+            session['last_activity'] = time.time()
             flash(f'Welcome back, {user["name"]}! Vault unlocked.', 'success')
             return redirect(url_for('home'))
 
@@ -637,6 +850,111 @@ def my_profile():
         return redirect(url_for('my_profile'))
 
     return render_template('profile.html', user=None)
+
+
+@app.route('/auth/register/verify', methods=['GET', 'POST'])
+def auth_register_verify():
+    pending = session.get('pending_register')
+    if not pending:
+        flash('No pending registration found. Please register again.', 'warning')
+        return redirect(url_for('my_profile'))
+
+    email = (pending.get('email') or '').strip().lower()
+    if request.method == 'POST':
+        otp = (request.form.get('otp') or '').strip()
+        if not re.match(r'^\d{6}$', otp):
+            flash('Please enter a valid 6-digit code.', 'error')
+            return redirect(url_for('auth_register_verify'))
+
+        if mongo.db is None:
+            flash('Database unavailable. Please try again.', 'error')
+            return redirect(url_for('auth_register_verify'))
+
+        doc = mongo.db.email_otps.find_one({'email_lower': email, 'purpose': 'register'})
+        if not doc:
+            flash('Code expired or not found. Please request a new code.', 'error')
+            return redirect(url_for('auth_register_verify'))
+
+        if doc.get('expires_at') and datetime.utcnow() > doc['expires_at']:
+            mongo.db.email_otps.delete_one({'_id': doc['_id']})
+            flash('Code expired. Please request a new code.', 'error')
+            return redirect(url_for('auth_register_verify'))
+
+        attempts = int(doc.get('attempt_count', 0) or 0)
+        if attempts >= 5:
+            flash('Too many incorrect attempts. Please request a new code.', 'error')
+            return redirect(url_for('auth_register_verify'))
+
+        if not verify_otp_hash(email, 'register', otp, doc.get('otp_hash', '')):
+            mongo.db.email_otps.update_one({'_id': doc['_id']}, {'$inc': {'attempt_count': 1}})
+            flash('Incorrect code. Please try again.', 'error')
+            return redirect(url_for('auth_register_verify'))
+
+        users = mongo.db.users
+        if users.find_one({'email_lower': email}):
+            session.pop('pending_register', None)
+            mongo.db.email_otps.delete_one({'_id': doc['_id']})
+            flash('This email is already registered. Please log in instead.', 'error')
+            return redirect(url_for('my_profile'))
+
+        name = (pending.get('name') or '').strip()
+        contact = (pending.get('contact') or '').strip()
+        password_hash = pending.get('password_hash')
+
+        now = datetime.utcnow()
+        try:
+            users.insert_one({
+                'name': name, 'name_lower': name.lower(),
+                'email': email, 'email_lower': email,
+                'contact': contact,
+                'password': password_hash,
+                'monthly_limit': 0.0,
+                'total_spent': 0.0, 'balance': 0.0,
+                'start_date': now, 'cycle_number': 1,
+                'alert_10_sent': False, 'alert_5_sent': False, 'over_budget': False,
+                'created_at': now, 'last_login': now, 'login_count': 1,
+                'onboarding_done': False,
+            })
+        except Exception as e:
+            print(f"[DB] Register error: {e}")
+            flash('Could not create account. Please try again.', 'error')
+            return redirect(url_for('my_profile'))
+
+        session.pop('pending_register', None)
+        mongo.db.email_otps.delete_one({'_id': doc['_id']})
+
+        session['username'] = name
+        session['email'] = email
+        session['show_onboarding'] = True
+        session['last_activity'] = time.time()
+        flash(f'Email verified. Welcome aboard, {name}!', 'success')
+        return redirect(url_for('onboarding'))
+
+    return render_template('otp_verify.html', purpose='register', email_mask=_mask_email(email))
+
+
+@app.route('/auth/otp/resend', methods=['POST'])
+def auth_otp_resend():
+    purpose = (request.form.get('purpose') or '').strip()
+    if purpose not in ('register', 'reset'):
+        flash('Invalid request.', 'error')
+        return redirect(url_for('my_profile'))
+
+    if purpose == 'register':
+        pending = session.get('pending_register') or {}
+        email = (pending.get('email') or '').strip().lower()
+        redirect_to = 'auth_register_verify'
+    else:
+        email = (session.get('reset_email') or '').strip().lower()
+        redirect_to = 'auth_reset_verify'
+
+    if not email:
+        flash('Please start the process again.', 'warning')
+        return redirect(url_for('my_profile'))
+
+    ok, msg = upsert_and_send_otp(email_lower=email, purpose=purpose, ip=request.remote_addr)
+    flash(msg, 'success' if ok else 'error')
+    return redirect(url_for(redirect_to))
 
 
 @app.route('/update_budget', methods=['POST'])
@@ -684,6 +1002,90 @@ def logout():
     session.clear()
     flash(f'Goodbye, {username}! You have been logged out.', 'success')
     return redirect(url_for('my_profile'))
+
+
+@app.route('/auth/reset/start', methods=['GET', 'POST'])
+def auth_reset_start():
+    if request.method == 'POST':
+        email = (request.form.get('email') or '').strip().lower()
+        email_err = validate_email(email)
+        if email_err:
+            flash(email_err, 'error')
+            return redirect(url_for('auth_reset_start'))
+
+        # Prevent enumeration: always show the same message.
+        session['reset_email'] = email
+        if mongo.db is not None:
+            user = mongo.db.users.find_one({'email_lower': email})
+            if user:
+                upsert_and_send_otp(email_lower=email, purpose='reset', ip=request.remote_addr)
+
+        flash('If an account exists for that email, a verification code has been sent.', 'success')
+        return redirect(url_for('auth_reset_verify'))
+
+    return render_template('reset_password.html')
+
+
+@app.route('/auth/reset/verify', methods=['GET', 'POST'])
+def auth_reset_verify():
+    email = (session.get('reset_email') or '').strip().lower()
+    if not email:
+        flash('Please start password reset again.', 'warning')
+        return redirect(url_for('auth_reset_start'))
+
+    if request.method == 'POST':
+        otp = (request.form.get('otp') or '').strip()
+        new_pw = (request.form.get('new_password') or '').strip()
+        confirm_pw = (request.form.get('confirm_password') or '').strip()
+
+        if not re.match(r'^\d{6}$', otp):
+            flash('Please enter a valid 6-digit code.', 'error')
+            return redirect(url_for('auth_reset_verify'))
+
+        pass_err = validate_password(new_pw)
+        if pass_err:
+            flash(pass_err, 'error')
+            return redirect(url_for('auth_reset_verify'))
+        if new_pw != confirm_pw:
+            flash('Passwords do not match.', 'error')
+            return redirect(url_for('auth_reset_verify'))
+
+        if mongo.db is None:
+            flash('Database unavailable. Please try again.', 'error')
+            return redirect(url_for('auth_reset_verify'))
+
+        otp_doc = mongo.db.email_otps.find_one({'email_lower': email, 'purpose': 'reset'})
+        if not otp_doc:
+            flash('Code expired or not found. Please request a new code.', 'error')
+            return redirect(url_for('auth_reset_verify'))
+
+        if otp_doc.get('expires_at') and datetime.utcnow() > otp_doc['expires_at']:
+            mongo.db.email_otps.delete_one({'_id': otp_doc['_id']})
+            flash('Code expired. Please request a new code.', 'error')
+            return redirect(url_for('auth_reset_verify'))
+
+        attempts = int(otp_doc.get('attempt_count', 0) or 0)
+        if attempts >= 5:
+            flash('Too many incorrect attempts. Please request a new code.', 'error')
+            return redirect(url_for('auth_reset_verify'))
+
+        if not verify_otp_hash(email, 'reset', otp, otp_doc.get('otp_hash', '')):
+            mongo.db.email_otps.update_one({'_id': otp_doc['_id']}, {'$inc': {'attempt_count': 1}})
+            flash('Incorrect code. Please try again.', 'error')
+            return redirect(url_for('auth_reset_verify'))
+
+        user = mongo.db.users.find_one({'email_lower': email})
+        if user:
+            new_hash = generate_password_hash(new_pw, method='pbkdf2:sha256', salt_length=16)
+            mongo.db.users.update_one({'_id': user['_id']}, {'$set': {'password': new_hash}})
+
+        mongo.db.email_otps.delete_one({'_id': otp_doc['_id']})
+        session.pop('reset_email', None)
+
+        flash('Password updated successfully. Please log in.', 'success')
+        return redirect(url_for('my_profile'))
+
+    return render_template('reset_verify.html', email_mask=_mask_email(email))
 
 
 @app.route('/change_password', methods=['POST'])
@@ -1064,11 +1466,6 @@ def delete_recurring(record_id):
         flash('Error deleting record.', 'error')
     return redirect(url_for('interval_spend'))
 
-
-
-@app.route('/about_us')
-def about_us():
-    return render_template('about_us.html')
 
 
 @app.route('/add_expense', methods=['POST'])

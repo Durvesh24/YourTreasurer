@@ -2,7 +2,7 @@
    HOME.CSS — Landing Page Hero
    ================================================================ */
 
-body { overflow: hidden !important; }
+/* body { overflow: hidden !important; } removed so user can scroll down if layout exceeds viewport */
 
 /* ── Flash bar ──────────────────────────────────────────────── */
 .flash-bar {
@@ -27,9 +27,9 @@ body { overflow: hidden !important; }
 
 /* ── Hero container ─────────────────────────────────────────── */
 .hero {
-    position: fixed; inset: 0; z-index: 5;
+    position: relative; min-height: 100vh; z-index: 5;
     display: flex; align-items: center; justify-content: center;
-    padding: 0 28px;
+    padding: 120px 28px 60px; /* Prevent nav occlusion */
 }
 
 .hero-content {
@@ -130,32 +130,144 @@ body { overflow: hidden !important; }
     color: #f0f9ff; transform: translateY(-2px);
 }
 
-/* ── Feature pills ──────────────────────────────────────────── */
-.feature-pills {
-    display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;
+/* ── FinTech Trust & Security Redesign ─────────────────────── */
+.fade-in-up {
+    opacity: 0;
+    transform: translateY(20px);
+    animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
-.pill {
-    padding: 7px 18px;
-    background: rgba(56,189,248,.07);
-    border: 1px solid rgba(56,189,248,.18);
+
+@keyframes fadeInUp {
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.trust-banner {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(52, 211, 153, 0.3);
     border-radius: 50px;
-    font-size: .74rem; font-weight: 600; letter-spacing: .4px;
-    color: rgba(186,230,253,.55);
-    transition: var(--transition);
+    color: #34d399;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    margin-bottom: 24px;
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.15);
 }
-.pill:hover {
-    background: rgba(56,189,248,.14);
-    border-color: rgba(56,189,248,.35);
-    color: #bae6fd;
-    transform: translateY(-2px);
+
+.trust-icon {
+    font-size: 1rem;
+    animation: pulseGlow 2s infinite alternate;
+}
+
+@keyframes pulseGlow {
+    from { text-shadow: 0 0 5px rgba(52, 211, 153, 0.4); }
+    to { text-shadow: 0 0 15px rgba(52, 211, 153, 0.8); }
+}
+
+.trust-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-top: 20px;
+    text-align: left;
+}
+
+.trust-card {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: transform 0.3s ease, background 0.3s ease, border-color 0.3s ease;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+.trust-card:hover {
+    transform: translateY(-5px);
+    background: rgba(30, 41, 59, 0.8);
+    border-color: rgba(56, 189, 248, 0.3);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.trust-card-icon {
+    font-size: 1.8rem;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+}
+
+.trust-card-text h4 {
+    margin: 0 0 6px;
+    font-family: 'Poppins', sans-serif;
+    color: #f8fafc;
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.trust-card-text p {
+    margin: 0;
+    color: #94a3b8;
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+
+.transparency-note {
+    margin-top: 30px;
+    font-size: 0.82rem;
+    color: #64748b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.pulse-dot {
+    width: 8px;
+    height: 8px;
+    background-color: #10b981;
+    border-radius: 50%;
+    display: inline-block;
+    box-shadow: 0 0 8px #10b981;
+    animation: pulseDot 2s infinite;
+}
+
+@keyframes pulseDot {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+    70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+.arrow {
+    display: inline-block;
+    transition: transform 0.3s ease;
+}
+
+.btn-primary:hover .arrow {
+    transform: translateX(4px);
 }
 
 /* Nav overrides for home */
 .nav-logout { color: rgba(252,165,165,.75) !important; }
 .nav-logout:hover { color: #fca5a5 !important; }
 
+@media (max-width: 768px) {
+    .trust-grid { grid-template-columns: 1fr; }
+    .hero-title { font-size: 2.5rem; }
+    .hero-sub { margin-bottom: 24px; }
+}
+
 @media (max-width: 480px) {
-    .hero-actions { flex-direction: column; align-items: center; }
+    .hero-actions { flex-direction: column; align-items: stretch; }
     .btn-primary, .btn-ghost { width: 100%; text-align: center; }
     .hero-title { letter-spacing: -1px; }
 }
