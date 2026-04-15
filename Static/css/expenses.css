@@ -918,3 +918,7 @@ body { overflow-y: auto !important; }
     .modal-actions { flex-direction: column; }
 }
 
+.expense-card-animated {
+    animation: slideUpCard 0.45s cubic-bezier(.25,.8,.25,1) both;
+    animation-delay: var(--anim-delay, 0s);
+}

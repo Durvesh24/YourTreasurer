@@ -16,6 +16,8 @@
         <img src="{{ url_for('static', filename='images/logo.png') }}" alt="YourTreasurer">
     </div>
 
+    
+
     <button class="menu-trigger" id="menu-btn"><span>&#9776; Menu</span></button>
     <div class="menu-backdrop" id="menu-backdrop"></div>
 
@@ -41,12 +43,56 @@
     <div id="hover-bg" class="dynamic-bg hover-layer"></div>
 
     <div class="page-container">
-        <header class="page-header" style="padding-top: 90px;">
+        <header class="page-header" style="padding-top: 90px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 15px;">
             <div>
-                <h1 class="analysis-title">Expenditure DNA</h1>
+                <h1 class="analysis-title" style="display:flex; align-items:center; gap: 12px;">
+                    Expenditure DNA 
+                    <span class="live-status"><span class="pulse-dot"></span> As of Today</span>
+                </h1>
                 <p class="analysis-subtitle">Advanced algorithmic breakdown of your financial habits.</p>
             </div>
+            <button id="export-csv-btn" class="export-btn" onclick="exportToCSV()">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                Export CSV
+            </button>
         </header>
+
+        <!-- ── Filters (new; optional, defaults keep old behavior) ── -->
+        <section class="analysis-filters">
+            <div class="filter-row">
+                <div class="filter-group">
+                    <span class="filter-label">Range</span>
+                    <div class="segmented" role="tablist" aria-label="Date range">
+                        <button class="seg-btn" data-range="" aria-selected="true">All</button>
+                        <button class="seg-btn" data-range="today">Today</button>
+                        <button class="seg-btn" data-range="7d">7D</button>
+                        <button class="seg-btn" data-range="30d">30D</button>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <span class="filter-label">Custom</span>
+                    <div class="date-pair">
+                        <input id="flt-start" type="date" class="flt-date" />
+                        <span class="date-sep">→</span>
+                        <input id="flt-end" type="date" class="flt-date" />
+                        <button id="flt-apply" class="flt-apply">Apply</button>
+                    </div>
+                </div>
+
+                <div class="filter-group toggles">
+                    <label class="chk">
+                        <input id="flt-only-loans" type="checkbox" />
+                        <span>Only loans</span>
+                    </label>
+                    <label class="chk">
+                        <input id="flt-include-paid" type="checkbox" />
+                        <span>Include paid loans</span>
+                    </label>
+                </div>
+            </div>
+            <div class="filter-hint">Tip: click a slice or a table row to drill into that category.</div>
+        </section>
 
         <!-- ── Top Grid: Chart + Insights ── -->
         <div class="analysis-grid">
@@ -145,6 +191,24 @@
                 </table>
             </div>
         </div>
+
+        <!-- ── Drilldown Drawer & Overlay (new) ── -->
+        <div id="drill-backdrop" class="drill-backdrop" aria-hidden="true"></div>
+        <aside id="drilldown" class="drilldown" aria-hidden="true">
+            <div class="drilldown-header">
+                <div>
+                    <div class="drill-kicker">Category drilldown</div>
+                    <h3 id="drill-title" class="drill-title">—</h3>
+                </div>
+                <button id="drill-close" class="drill-close" aria-label="Close">×</button>
+            </div>
+            <div class="drill-meta">
+                <span id="drill-sub" class="drill-sub">—</span>
+            </div>
+            <div id="drill-list" class="drill-list">
+                <div class="drill-skel">Loading…</div>
+            </div>
+        </aside>
 
     </div>
 
@@ -265,6 +329,110 @@
             });
         }
 
+        // ── Filters state ───────────────────────────────────────────────
+        const state = {
+            range: "",
+            start: "",
+            end: "",
+            onlyLoans: false,
+            includePaid: false,
+        };
+
+        function buildQuery() {
+            const p = new URLSearchParams();
+            if (state.start) p.set("start", state.start);
+            if (state.end) p.set("end", state.end);
+            if (!state.start && !state.end && state.range) p.set("range", state.range);
+            if (state.onlyLoans) p.set("only_loans", "true");
+            if (state.includePaid) p.set("include_paid_loans", "true");
+            const qs = p.toString();
+            return qs ? `?${qs}` : "";
+        }
+
+        function fmtINR(n) {
+            try { return Number(n || 0).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+            catch { return String(n); }
+        }
+
+        // ── Drilldown drawer ────────────────────────────────────────────
+        const drillEl = document.getElementById('drilldown');
+        const drillBackdrop = document.getElementById('drill-backdrop');
+        const drillTitleEl = document.getElementById('drill-title');
+        const drillSubEl = document.getElementById('drill-sub');
+        const drillListEl = document.getElementById('drill-list');
+        
+        function closeDrilldown() {
+            drillEl.classList.remove('open');
+            drillEl.setAttribute('aria-hidden', 'true');
+            drillBackdrop.classList.remove('active');
+            document.body.style.overflow = '';
+        }
+        
+        document.getElementById('drill-close').addEventListener('click', closeDrilldown);
+        drillBackdrop.addEventListener('click', closeDrilldown);
+
+        async function openDrilldown(category, total, pct) {
+            drillTitleEl.textContent = category;
+            drillSubEl.textContent = `Total ₹${fmtINR(total)} • ${pct.toFixed(1)}%`;
+            drillListEl.innerHTML = `<div class="drill-skel">Loading…</div>`;
+            
+            drillEl.classList.add('open');
+            drillEl.setAttribute('aria-hidden', 'false');
+            drillBackdrop.classList.add('active');
+            document.body.style.overflow = 'hidden';
+
+            try {
+                const qs = buildQuery();
+                const res = await fetch(`/api/category_transactions${qs}${qs ? '&' : '?'}category=${encodeURIComponent(category)}&limit=12`);
+                const data = await res.json();
+                if (!res.ok) throw new Error(data?.error || 'Failed');
+                const items = data.items || [];
+                if (!items.length) {
+                    drillListEl.innerHTML = `<div class="drill-empty">No transactions for this filter.</div>`;
+                    return;
+                }
+
+                drillListEl.innerHTML = items.map(it => {
+                    const dt = it.expense_date ? new Date(it.expense_date) : null;
+                    const when = dt ? dt.toLocaleString(undefined, {month:'short', day:'2-digit'}) : '';
+                    const badge = it.is_loan ? `<span class="drill-badge">${(it.loan_status || 'loan').toUpperCase()}</span>` : '';
+                    const title = (it.description || it.category || 'Expense');
+                    return `
+                      <div class="drill-item" style="opacity:0; animation: fadeUp .4s ease forwards;">
+                        <div class="drill-left">
+                          <div class="drill-item-title">${title}${badge}</div>
+                          <div class="drill-item-sub">${when}${it.is_loan && it.friend_name ? ` • ${it.friend_name}` : ''}</div>
+                        </div>
+                        <div class="drill-amt">₹${fmtINR(it.amount)}</div>
+                      </div>
+                    `;
+                }).join('');
+            } catch (e) {
+                drillListEl.innerHTML = `<div class="drill-empty">Failed to load drilldown.</div>`;
+            }
+        }
+        
+        // ── CSV Export ──
+        function exportToCSV() {
+            if (!tableData || tableData.length === 0) {
+                alert("No data available to export.");
+                return;
+            }
+            let csv = "Rank,Category,Amount,Percentage\n";
+            tableData.forEach((row, i) => {
+                csv += `"${i+1}","${row.category}","${row.amount}","${row.pct.toFixed(2)}%"\n`;
+            });
+            const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `YourTreasurer_Analysis_${new Date().toISOString().split('T')[0]}.csv`);
+            link.style.visibility = "hidden";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
         // ── Main: Fetch → Render ────────────────────────────────────────
         document.addEventListener('DOMContentLoaded', async () => {
             const loader       = document.getElementById('chart-loader');
@@ -272,31 +440,82 @@
             const emptyState   = document.getElementById('empty-state');
             const tableSection = document.getElementById('breakdown-table-section');
 
-            try {
-                const res    = await fetch('/api/expense_breakdown');
-                const result = await res.json();
-                loader.style.display = 'none';
+            // Wire filters
+            const segBtns = Array.from(document.querySelectorAll('.seg-btn'));
+            const startEl = document.getElementById('flt-start');
+            const endEl = document.getElementById('flt-end');
+            const applyEl = document.getElementById('flt-apply');
+            const onlyLoansEl = document.getElementById('flt-only-loans');
+            const includePaidEl = document.getElementById('flt-include-paid');
 
-                if (!res.ok || !result.labels || result.labels.length === 0) {
-                    emptyState.style.display = 'flex';
-                    return;
-                }
-
-                canvas.style.display = 'block';
-                const total = result.data.reduce((s, v) => s + v, 0);
-
-                // Map specific shading directly based on Loan categories
-                const dynamicColors = result.labels.map((label, i) => {
-                    if (label === 'Loans (Pending)')   return 'rgba(245, 158, 11, 0.9)'; // Amber warning
-                    if (label === 'Loans (Paid Back)') return 'rgba(16, 185, 129, 0.9)'; // Emerald success
-                    return COLORS[i % COLORS.length];
+            function setActiveSeg(range) {
+                segBtns.forEach(b => {
+                    const active = (b.dataset.range || "") === (range || "");
+                    b.classList.toggle('active', active);
+                    b.setAttribute('aria-selected', active ? 'true' : 'false');
                 });
+            }
 
-                // Set shared state BEFORE new Chart() — plugin reads these on first draw
-                chartTotal     = total;
-                chartAnimStart = Date.now();
+            segBtns.forEach(b => b.addEventListener('click', () => {
+                state.range = b.dataset.range || "";
+                state.start = "";
+                state.end = "";
+                startEl.value = "";
+                endEl.value = "";
+                setActiveSeg(state.range);
+                boot(); // refresh
+            }));
 
-                myChart = new Chart(canvas, {
+            applyEl.addEventListener('click', () => {
+                state.start = startEl.value || "";
+                state.end = endEl.value || "";
+                state.range = "";
+                setActiveSeg("");
+                boot();
+            });
+
+            onlyLoansEl.addEventListener('change', () => { state.onlyLoans = !!onlyLoansEl.checked; boot(); });
+            includePaidEl.addEventListener('change', () => { state.includePaid = !!includePaidEl.checked; boot(); });
+
+            async function boot() {
+                // reset UI bits
+                loader.style.display = 'flex';
+                emptyState.style.display = 'none';
+                canvas.style.display = 'none';
+                tableSection.style.display = 'none';
+                document.getElementById('timeline-section').style.display = 'none';
+                document.getElementById('pulse-ring-el').style.display = 'none';
+                hoveredIndex = null;
+                chartAnimStart = null;
+                chartTotal = 0;
+                if (myChart) { try { myChart.destroy(); } catch(_) {} }
+
+                try {
+                    const qs = buildQuery();
+                    const res    = await fetch(`/api/expense_breakdown${qs}`);
+                    const result = await res.json();
+                    loader.style.display = 'none';
+
+                    if (!res.ok || !result.labels || result.labels.length === 0) {
+                        emptyState.style.display = 'flex';
+                        return;
+                    }
+
+                    canvas.style.display = 'block';
+                    const total = result.data.reduce((s, v) => s + v, 0);
+
+                    // Map specific shading directly based on Loan categories
+                    const dynamicColors = result.labels.map((label, i) => {
+                        if (label === 'Loans (Pending)')   return 'rgba(245, 158, 11, 0.9)'; // Amber warning
+                        if (label === 'Loans (Paid Back)') return 'rgba(16, 185, 129, 0.9)'; // Emerald success
+                        return COLORS[i % COLORS.length];
+                    });
+
+                    // Set shared state BEFORE new Chart() — plugin reads these on first draw
+                    chartTotal     = total;
+                    chartAnimStart = Date.now();
+
+                    myChart = new Chart(canvas, {
                     type: 'doughnut',
                     data: {
                         labels: result.labels,
@@ -321,6 +540,14 @@
                                 hoveredIndex = newHover;
                                 myChart.draw(); // Force redraw plugin layer
                             }
+                        },
+                        onClick: (e, elements) => {
+                            if (!elements?.length) return;
+                            const idx = elements[0].index;
+                            const cat = result.labels[idx];
+                            const amt = result.data[idx];
+                            const pct = total ? (amt / total) * 100 : 0;
+                            openDrilldown(cat, amt, pct);
                         },
                         animation: {
                             duration: ANIM_MS,
@@ -353,10 +580,10 @@
                             }
                         }
                     }
-                });
+                    });
 
-                // ── Post-animation sequence (fires after spin ends) ──
-                setTimeout(() => {
+                    // ── Post-animation sequence (fires after spin ends) ──
+                    setTimeout(() => {
                     // 1. Drive the center fade-in (FADE_MS) via rAF — calls afterDraw each frame
                     const fadeEnd = Date.now() + FADE_MS + 50;
                     (function driveCenter() {
@@ -383,36 +610,45 @@
                             if (el) el.classList.add('stat-in');
                         }, i * 120 + 150);
                     });
-                }, ANIM_MS);
+                    }, ANIM_MS);
 
-                // Populate insight card data (visible after stat-in animation)
-                const hiIdx = result.data.indexOf(Math.max(...result.data));
-                document.getElementById('highest-cat').textContent  = result.labels[hiIdx];
+                    // Populate insight card data (visible after stat-in animation)
+                    const hiIdx = result.data.indexOf(Math.max(...result.data));
+                    document.getElementById('highest-cat').textContent  = result.labels[hiIdx];
 
-                const loanPenIdx = result.labels.indexOf('Loans (Pending)');
-                const loanPdIdx  = result.labels.indexOf('Loans (Paid Back)');
-                const totalLoans = (loanPenIdx !== -1 ? result.data[loanPenIdx] : 0) + (loanPdIdx !== -1 ? result.data[loanPdIdx] : 0);
-                document.getElementById('loans-stat').textContent   = '₹ ' + totalLoans.toLocaleString('en-IN');
-                
-                document.getElementById('dominant-stat').textContent = result.labels.length > 3
-                    ? 'Diversified 🌐' : result.labels.length > 1 ? 'Moderate ⚖️' : 'Concentrated 🎯';
-                document.getElementById('total-stat').textContent = '₹\u202f' + total.toLocaleString('en-IN');
+                    const loanPenIdx = result.labels.indexOf('Loans (Pending)');
+                    const loanPdIdx  = result.labels.indexOf('Loans (Paid Back)');
+                    const totalLoans = (loanPenIdx !== -1 ? result.data[loanPenIdx] : 0) + (loanPdIdx !== -1 ? result.data[loanPdIdx] : 0);
+                    document.getElementById('loans-stat').textContent   = '₹ ' + totalLoans.toLocaleString('en-IN');
+                    
+                    document.getElementById('dominant-stat').textContent = result.labels.length > 3
+                        ? 'Diversified 🌐' : result.labels.length > 1 ? 'Moderate ⚖️' : 'Concentrated 🎯';
+                    document.getElementById('total-stat').textContent = '₹\u202f' + total.toLocaleString('en-IN');
 
-                // Table
-                tableData = result.labels.map((label, i) => ({
-                    category: label,
-                    amount:   result.data[i],
-                    pct:      (result.data[i] / total) * 100,
-                    color:    dynamicColors[i]
-                }));
-                tableSection.style.display = 'block';
-                renderTable();
+                    // Table
+                    tableData = result.labels.map((label, i) => ({
+                        category: label,
+                        amount:   result.data[i],
+                        pct:      (result.data[i] / total) * 100,
+                        color:    dynamicColors[i]
+                    }));
+                    tableSection.style.display = 'block';
+                    renderTable();
 
-                // ── Task 10: Timeline Chart ──
-                const tlRes = await fetch('/api/timeline_data');
-                if (tlRes.ok) {
-                    const tlData = await tlRes.json();
-                    document.getElementById('timeline-section').style.display = 'block';
+                    // Click row → drilldown
+                    document.querySelectorAll('#breakdown-tbody tr').forEach((tr, i) => {
+                        tr.addEventListener('click', () => {
+                            const row = tableData[i];
+                            if (!row) return;
+                            openDrilldown(row.category, row.amount, row.pct);
+                        });
+                    });
+
+                    // ── Timeline Chart ──
+                    const tlRes = await fetch(`/api/timeline_data${qs}`);
+                    if (tlRes.ok) {
+                        const tlData = await tlRes.json();
+                        document.getElementById('timeline-section').style.display = 'block';
                     
                     const tlCanvas = document.getElementById('timelineChart');
                     const tlCtx = tlCanvas.getContext('2d');
@@ -505,12 +741,17 @@
                     
                     btnDay.addEventListener('click', () => updateTimeline('hourly', btnDay, btnMonth));
                     btnMonth.addEventListener('click', () => updateTimeline('daily', btnMonth, btnDay));
-                }
+                    }
 
-            } catch (err) {
-                console.error('Analytics error:', err);
-                loader.innerHTML = '<p style="color:#ef4444;font-family:Inter;text-align:center">Failed to load analytics. Please refresh.</p>';
+                } catch (err) {
+                    console.error('Analytics error:', err);
+                    loader.innerHTML = '<p style="color:#ef4444;font-family:Inter;text-align:center">Failed to load analytics. Please refresh.</p>';
+                }
             }
+
+            // initial load
+            setActiveSeg("");
+            boot();
         });
     </script>
     {% if session.get('username') %}

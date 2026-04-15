@@ -17,6 +17,8 @@
     </div>
 
     <!-- Nav Menu -->
+    
+
     <button class="menu-trigger" id="menu-btn"><span>&#9776; Menu</span></button>
     <div class="menu-backdrop" id="menu-backdrop"></div>
 
@@ -62,6 +64,30 @@
                 </div>
             </div>
 
+            <!-- KPI Strip (new) -->
+            <div class="dash-kpis" id="dash-kpis" style="display:none;">
+                <div class="kpi-card">
+                    <div class="kpi-label">Balance Left</div>
+                    <div class="kpi-value" id="kpi-balance">—</div>
+                    <div class="kpi-sub" id="kpi-balance-sub">—</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Burn Rate</div>
+                    <div class="kpi-value" id="kpi-burn">—</div>
+                    <div class="kpi-sub">Avg spend/day</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Pending Loans</div>
+                    <div class="kpi-value" id="kpi-loans">—</div>
+                    <div class="kpi-sub" id="kpi-loans-sub">—</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Next Due</div>
+                    <div class="kpi-value" id="kpi-due">—</div>
+                    <div class="kpi-sub" id="kpi-due-sub">—</div>
+                </div>
+            </div>
+
             <!-- Task 14: Real-Time Progress Engine -->
             <div class="glass-panel" style="background: rgba(30, 41, 59, 0.45); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 20px; padding: 30px; backdrop-filter: blur(16px); margin-bottom: 30px;">
                 <div style="display:flex; justify-content:space-between; margin-bottom: 15px;">
@@ -95,6 +121,48 @@
                     </select>
                     <button type="submit" id="ql-submit" style="background:linear-gradient(135deg, #3b82f6, #2563eb); color:white; border:none; padding:12px 24px; border-radius:10px; font-weight:bold; cursor:pointer; font-family:'Inter'; transition:transform 0.2s, box-shadow 0.2s;">Log It 🚀</button>
                 </form>
+            </div>
+
+            <!-- Recent Activity + Suggestions (new) -->
+            <div class="dash-grid-2">
+                <div class="dash-panel">
+                    <div class="dash-panel-head">
+                        <h3>Recent activity</h3>
+                        <a class="dash-link" href="/my_expenses">View all →</a>
+                    </div>
+                    <div id="recent-list" class="recent-list">
+                        <div class="recent-skel">Loading…</div>
+                    </div>
+                </div>
+                <div class="dash-panel">
+                    <div class="dash-panel-head">
+                        <h3>Next actions</h3>
+                        <span class="dash-badge">Smart</span>
+                    </div>
+                    <div id="next-actions" class="next-actions">
+                        <div class="action-item">
+                            <div class="action-title">Keep your burn rate safe</div>
+                            <div class="action-sub" id="act-burn">—</div>
+                        </div>
+                        <div class="action-item">
+                            <div class="action-title">Close pending loans</div>
+                            <div class="action-sub" id="act-loans">—</div>
+                        </div>
+                        <div class="action-item">
+                            <div class="action-title">Prepare for next due</div>
+                            <div class="action-sub" id="act-due">—</div>
+                        </div>
+                    </div>
+                    <div class="upcoming-block">
+                        <div class="upcoming-head">
+                            <div class="upcoming-title">Upcoming dues</div>
+                            <a class="dash-link" href="/interval_spend">Manage →</a>
+                        </div>
+                        <div id="upcoming-list" class="upcoming-list">
+                            <div class="recent-skel">Loading…</div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
         {% else %}
@@ -320,6 +388,165 @@
         }
     }
     }
+
+    // ==========================================
+    // DASHBOARD KPIs + RECENT (new, optional)
+    // ==========================================
+    function fmtINR(n, digits=2) {
+        try {
+            return Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+        } catch (_) {
+            return String(n);
+        }
+    }
+
+    async function bootDashboardExtras() {
+        const kpiWrap = document.getElementById('dash-kpis');
+        const recentList = document.getElementById('recent-list');
+        if (!kpiWrap || !recentList) return;
+
+        try {
+            const [sumRes, recRes, dueRes] = await Promise.all([
+                fetch('/api/dashboard_summary'),
+                fetch('/api/recent_transactions?limit=7'),
+                fetch('/api/upcoming_dues?limit=5'),
+            ]);
+            const sum = await sumRes.json();
+            const rec = await recRes.json();
+            const dues = await dueRes.json();
+            if (!sumRes.ok) throw new Error(sum?.error || 'summary');
+
+            kpiWrap.style.display = 'grid';
+            const bal = sum.balance ?? 0;
+            const lim = sum.limit ?? 0;
+            const pctLeft = lim > 0 ? (Math.max(0, bal) / lim) * 100 : 0;
+
+            document.getElementById('kpi-balance').textContent = `₹${fmtINR(bal)}`;
+            document.getElementById('kpi-balance-sub').textContent = lim > 0 ? `${pctLeft.toFixed(1)}% left of ₹${fmtINR(lim)}` : 'Set a monthly limit in Profile';
+            document.getElementById('kpi-burn').textContent = `₹${fmtINR(sum.burn_rate_per_day, 0)}`;
+            document.getElementById('kpi-loans').textContent = `₹${fmtINR(sum.pending_loans_amount)}`;
+            document.getElementById('kpi-loans-sub').textContent = `${sum.pending_loans_count || 0} pending`;
+
+            if (sum.upcoming_due) {
+                const d = sum.upcoming_due;
+                const dt = d.due_date ? new Date(d.due_date) : null;
+                document.getElementById('kpi-due').textContent = `₹${fmtINR(d.amount)}`;
+                document.getElementById('kpi-due-sub').textContent = `${d.title || 'Upcoming'} • ${dt ? dt.toLocaleDateString(undefined, {month:'short', day:'2-digit'}) : ''} (${d.days_left ?? 0}d)`;
+            } else {
+                document.getElementById('kpi-due').textContent = '—';
+                document.getElementById('kpi-due-sub').textContent = 'No upcoming dues';
+            }
+
+            // Next actions copy
+            const safe = (sum.safe_daily_spend ?? 0);
+            document.getElementById('act-burn').textContent =
+                `Cycle day ${sum.cycle_day ?? 1}/30 • ${sum.days_remaining ?? 0} days left. Target ≤ ₹${fmtINR(safe, 0)}/day (current ₹${fmtINR(sum.burn_rate_per_day, 0)}/day).`;
+            document.getElementById('act-loans').textContent =
+                (sum.pending_loans_count || 0) > 0
+                    ? `You have ${sum.pending_loans_count} pending loans (₹${fmtINR(sum.pending_loans_amount)}). Send reminders from My Expenses.`
+                    : 'No pending loans right now.';
+            document.getElementById('act-due').textContent =
+                sum.upcoming_due
+                    ? `Next due: ${sum.upcoming_due.title} in ${sum.upcoming_due.days_left ?? 0} day(s).`
+                    : 'Add interval spends to track upcoming dues.';
+
+            // Upcoming dues list
+            const upList = document.getElementById('upcoming-list');
+            if (upList) {
+                const items = (dues && dues.items) ? dues.items : [];
+                if (!items.length) {
+                    upList.innerHTML = `<div class="recent-skel">No upcoming dues.</div>`;
+                } else {
+                    upList.innerHTML = items.map(d => {
+                        const dt = d.due_date ? new Date(d.due_date) : null;
+                        const when = dt ? dt.toLocaleDateString(undefined, {month:'short', day:'2-digit'}) : '';
+                        return `
+                          <div class="upcoming-item">
+                            <div class="up-left">
+                              <div class="up-name">${d.title || 'Due'}</div>
+                              <div class="up-sub">${when}${typeof d.days_left === 'number' ? ` • ${d.days_left}d left` : ''}</div>
+                            </div>
+                            <div class="up-amt">₹${fmtINR(d.amount)}</div>
+                          </div>
+                        `;
+                    }).join('');
+                }
+            }
+
+            // Recent list
+            const items = (rec && rec.items) ? rec.items : [];
+            if (!items.length) {
+                recentList.innerHTML = `<div class="recent-skel">No activity yet. Log your first expense.</div>`;
+                return;
+            }
+            recentList.innerHTML = items.map(it => {
+                const dt = it.expense_date ? new Date(it.expense_date) : null;
+                const when = dt ? dt.toLocaleString(undefined, {month:'short', day:'2-digit'}) : '';
+                const pill = it.is_loan ? `<span class="recent-pill">${(it.loan_status || 'loan').toUpperCase()}</span>` : '';
+                const canMarkPaid = it.is_loan && (it.loan_status || '').toLowerCase() === 'pending';
+                return `
+                  <div class="recent-item">
+                    <div class="recent-left">
+                      <div class="recent-title">${(it.description || it.category || 'Expense')}${pill}</div>
+                      <div class="recent-sub">${it.is_loan ? (it.friend_name ? `Loan • ${it.friend_name}` : 'Loan') : (it.category || '')}${when ? ` • ${when}` : ''}</div>
+                    </div>
+                    <div class="recent-right">
+                      <div class="recent-amt">₹${fmtINR(it.amount)}</div>
+                      <div class="recent-actions">
+                        ${canMarkPaid ? `<button class="ra-btn ra-good" data-action="paid" data-id="${it.id}" title="Mark loan paid">Paid</button>` : ``}
+                        <button class="ra-btn ra-bad" data-action="del" data-id="${it.id}" title="Delete">Del</button>
+                      </div>
+                    </div>
+                  </div>
+                `;
+            }).join('');
+
+            // Wire action buttons
+            document.querySelectorAll('.ra-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const id = btn.dataset.id;
+                    const action = btn.dataset.action;
+                    if (!id || !action) return;
+
+                    if (action === 'del') {
+                        if (!confirm('Delete this entry?')) return;
+                        btn.disabled = true;
+                        btn.textContent = '...';
+                        try {
+                            const res = await fetch(`/api/delete_expense/${id}`, { method: 'POST', headers: { 'Accept': 'application/json' } });
+                            const data = await res.json();
+                            if (!res.ok || !data.success) throw new Error(data?.error || 'delete failed');
+                            bootDashboardExtras(); // refresh lists/KPIs
+                        } catch (_) {
+                            btn.disabled = false;
+                            btn.textContent = 'Del';
+                        }
+                    }
+
+                    if (action === 'paid') {
+                        btn.disabled = true;
+                        btn.textContent = '...';
+                        try {
+                            const res = await fetch(`/api/mark_loan_paid/${id}`, { method: 'POST', headers: { 'Accept': 'application/json' } });
+                            const data = await res.json();
+                            if (!res.ok || !data.success) throw new Error(data?.error || 'mark paid failed');
+                            bootDashboardExtras(); // refresh
+                        } catch (_) {
+                            btn.disabled = false;
+                            btn.textContent = 'Paid';
+                        }
+                    }
+                });
+            });
+
+        } catch (e) {
+            // Fail silently; do not break previous dashboard
+            try { document.getElementById('recent-list').innerHTML = `<div class="recent-skel">—</div>`; } catch(_) {}
+        }
+    }
+    bootDashboardExtras();
     </script>
     <style>
         @keyframes red-pulse {

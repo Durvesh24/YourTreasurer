@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>About Us | YourTreasurer</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/Style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
         /* Specific overrides for the About Us content readability */
@@ -24,6 +24,7 @@
             animation: aboutFadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
             opacity: 0;
             transform: translateY(20px);
+            font-family: 'Poppins', 'Inter', sans-serif;
         }
         
         @keyframes aboutFadeIn {
@@ -47,6 +48,7 @@
             color: #cbd5e1;
             font-size: 1.1rem;
             margin-bottom: 24px;
+            max-width: 70ch;
         }
 
         .feature-grid {
@@ -106,6 +108,8 @@
     <div class="brand-logo-top">
         <a href="/"><img src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo"></a>
     </div>
+
+    
 
     <button class="menu-trigger" id="menu-btn"><span>☰ Menu</span></button>
     <div class="menu-backdrop" id="menu-backdrop"></div>

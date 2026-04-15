@@ -15,6 +15,8 @@
         <img src="{{ url_for('static', filename='images/logo.png') }}" alt="YourTreasurer">
     </div>
 
+    
+
     <button class="menu-trigger" id="menu-btn"><span>&#9776; Menu</span></button>
     <div class="menu-backdrop" id="menu-backdrop"></div>
 
@@ -245,7 +247,8 @@
                          data-friend-name="{{ exp.friend_name | default('') | escape }}"
                          data-friend-email="{{ exp.friend_email | default('') | escape }}"
                          data-receipt-url="{{ exp.receipt_url | default('') | escape }}"
-                         style="animation: slideUpCard 0.45s cubic-bezier(.25,.8,.25,1) both; animation-delay: {{ loop.index0 * 0.04 }}s;">
+                         style="--anim-delay: {{ loop.index0 * 0.04 }}s;"
+                         class="expense-card-animated">
                         <div class="exp-icon">
                             {% if exp.category == 'Educational' %}🎓
                             {% elif exp.category == 'Lifestyle' %}🛍️

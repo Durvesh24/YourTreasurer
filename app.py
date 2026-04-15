@@ -4,7 +4,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import os, re, threading, ssl, certifi, time, secrets, hmac, hashlib
 from pymongo import MongoClient
 from bson.objectid import ObjectId
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 import cloudinary
 import cloudinary.uploader
@@ -78,6 +78,16 @@ class _DB:
 mongo = _DB()
 mongo.connect(_mongo_uri)
 
+# ──────────────────────────────────────────────────────────────
+# TIME HELPERS (keep naive UTC for Mongo compatibility)
+# ──────────────────────────────────────────────────────────────
+def utcnow_naive() -> datetime:
+    """
+    Returns a timezone-safe UTC 'now' but with tzinfo stripped (naive).
+    Preserves compatibility with existing MongoDB datetimes stored as naive UTC.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
 # Create indexes once (idempotent — Atlas ignores if they exist)
 with app.app_context():
     if mongo.db is not None:
@@ -97,6 +107,11 @@ with app.app_context():
             _create_index_safe(mongo.db.users, [("email_lower", 1)], unique=True, name="unique_email")
             _create_index_safe(mongo.db.email_otps, [("expires_at", 1)], expireAfterSeconds=0, name="ttl_expires_at")
             _create_index_safe(mongo.db.email_otps, [("email_lower", 1), ("purpose", 1)], unique=True, name="unique_email_purpose")
+            # Performance indexes (non-unique)
+            _create_index_safe(mongo.db.daily_expenses, [("username", 1), ("expense_date", -1)], name="idx_expenses_user_date")
+            _create_index_safe(mongo.db.daily_expenses, [("username", 1), ("category", 1), ("expense_date", -1)], name="idx_expenses_user_cat_date")
+            _create_index_safe(mongo.db.daily_expenses, [("username", 1), ("is_loan", 1), ("loan_status", 1), ("expense_date", -1)], name="idx_expenses_loans")
+            _create_index_safe(mongo.db.recurring_payments, [("username", 1), ("due_date", 1)], name="idx_recurring_user_due")
             print("[DB] Indexes ready.")
         except Exception as e:
             print(f"[DB] Index note: {e}")
@@ -206,6 +221,65 @@ EXPENSE_CATEGORIES = [
 ]
 
 # ──────────────────────────────────────────────────────────────
+# ANALYTICS HELPERS (optional query params; backwards-compatible)
+# ──────────────────────────────────────────────────────────────
+def _parse_bool(v: str | None) -> bool | None:
+    if v is None:
+        return None
+    s = str(v).strip().lower()
+    if s in ("1", "true", "yes", "y", "on"):
+        return True
+    if s in ("0", "false", "no", "n", "off"):
+        return False
+    return None
+
+def _parse_date_ymd(v: str | None) -> datetime | None:
+    if not v:
+        return None
+    try:
+        return datetime.strptime(v.strip(), "%Y-%m-%d")
+    except Exception:
+        return None
+
+def _range_query_from_args(args) -> tuple[dict, datetime | None, datetime | None]:
+    """
+    Build a MongoDB date-range query against expense_date from optional query params:
+      - start=YYYY-MM-DD
+      - end=YYYY-MM-DD  (inclusive; translated to < next-day)
+      - range=today|7d|30d  (ignored if explicit start/end provided)
+    Returns: (query_part, start_dt, end_dt_exclusive)
+    """
+    start = _parse_date_ymd(args.get("start"))
+    end_inclusive = _parse_date_ymd(args.get("end"))
+
+    if start or end_inclusive:
+        # Inclusive end date support: end=2026-04-15 includes the whole day
+        end_excl = (end_inclusive + timedelta(days=1)) if end_inclusive else None
+        q = {}
+        if start and end_excl:
+            q["expense_date"] = {"$gte": start, "$lt": end_excl}
+        elif start:
+            q["expense_date"] = {"$gte": start}
+        elif end_excl:
+            q["expense_date"] = {"$lt": end_excl}
+        return q, start, end_excl
+
+    rng = (args.get("range") or "").strip().lower()
+    now = datetime.now()
+    if rng == "today":
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_excl = start + timedelta(days=1)
+        return {"expense_date": {"$gte": start, "$lt": end_excl}}, start, end_excl
+    if rng == "7d":
+        start = now - timedelta(days=7)
+        return {"expense_date": {"$gte": start}}, start, None
+    if rng == "30d":
+        start = now - timedelta(days=30)
+        return {"expense_date": {"$gte": start}}, start, None
+
+    return {}, None, None
+
+# ──────────────────────────────────────────────────────────────
 # TASK 6: GUARDIAN MAIL — BUDGET ALERTS (Email Dispatcher)
 # ──────────────────────────────────────────────────────────────
 import smtplib
@@ -243,7 +317,7 @@ def _mask_email(email: str) -> str:
 def send_otp_email_async(to_email: str, purpose: str, otp: str):
     sender = os.environ.get("MAIL_USER", "")
     password = os.environ.get("MAIL_PASS", "")
-    if not sender or not password or sender == "your_email@gmail.com":
+    if not sender or not password:
         print("[Mail] Skipping OTP email; MAIL_USER or MAIL_PASS not configured in .env")
         return
 
@@ -295,17 +369,79 @@ def send_otp_email_async(to_email: str, purpose: str, otp: str):
     except Exception as e:
         print(f"[Mail] Failed to send OTP to {to_email}. Error: {e}")
 
+def send_loan_paid_email_async(to_email: str, friend_name: str, owner_name: str, amount: float, desc: str, bcc_email: str | None = None):
+    """Sends a confirmation email when a loan is marked as paid."""
+    sender = os.environ.get('MAIL_USER', '')
+    password = os.environ.get('MAIL_PASS', '')
+    if not sender or not password:
+        return
+
+    msg = EmailMessage()
+    msg['From'] = f"YourTreasurer Official <{sender}>"
+    msg['To'] = to_email
+    msg['Subject'] = "✅ Loan Successfully Paid"
+    if bcc_email:
+        msg['Bcc'] = bcc_email
+
+    color = "#22c55e"
+    safe_friend = friend_name or "Friend"
+    safe_desc = desc or "Loan"
+
+    html = f"""
+    <html>
+    <body style="background-color:#f8fafc; color:#334155; font-family:'Segoe UI', Tahoma, Arial, sans-serif; padding:20px; line-height:1.6;">
+      <div style="max-width:600px; margin:0 auto; background:#ffffff; border-radius:16px; padding:30px; border-top:6px solid {color}; box-shadow: 0 10px 25px rgba(0,0,0,0.06);">
+        <div style="text-align:center; padding-bottom:18px; border-bottom:1px solid #e2e8f0;">
+          <div style="font-size:12px; font-weight:800; letter-spacing:2px; text-transform:uppercase; color:{color};">Ledger Update</div>
+          <h1 style="margin:10px 0 0; font-size:22px; color:#0f172a;">Loan successfully paid</h1>
+        </div>
+        <p style="font-size:15px; margin-top:22px; color:#334155;">Hi <strong>{safe_friend}</strong>,</p>
+        <p style="font-size:14.5px; color:#475569;">
+          This is an automated confirmation that <strong>{owner_name}</strong> marked the following loan as <strong style="color:{color};">PAID</strong>.
+        </p>
+        <div style="background:#f1f5f9; border:1px solid #e2e8f0; border-radius:14px; padding:18px; margin:18px 0;">
+          <table style="width:100%; border-collapse:collapse; font-size:14.5px;">
+            <tr>
+              <td style="padding:8px 0; color:#64748b;">Description</td>
+              <td style="padding:8px 0; text-align:right; font-weight:700; color:#0f172a;">{safe_desc}</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0; color:#64748b; border-top:1px dashed #cbd5e1; padding-top:12px;">Amount</td>
+              <td style="padding:8px 0; text-align:right; font-weight:800; color:#16a34a; border-top:1px dashed #cbd5e1; padding-top:12px;">₹{amount:,.2f}</td>
+            </tr>
+          </table>
+        </div>
+        <p style="font-size:12px; color:#94a3b8; text-align:center; margin-top:24px; letter-spacing:0.4px;">
+          Automatically generated — do not reply.
+        </p>
+      </div>
+    </body>
+    </html>
+    """
+
+    msg.set_content(f"Loan successfully paid.\n{owner_name} marked '{safe_desc}' as PAID.\nAmount: ₹{amount:,.2f}")
+    msg.add_alternative(html, subtype='html')
+
+    try:
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
+            server.login(sender, password)
+            server.send_message(msg)
+        print(f"[Mail] Loan paid email sent to {to_email}")
+    except Exception as e:
+        print(f"[Mail] Failed to send loan paid email to {to_email}. Error: {e}")
+
 def _otp_can_send(existing: dict | None) -> tuple[bool, str]:
     if not existing:
         return True, ""
 
     last_sent_at = existing.get("last_sent_at")
-    if last_sent_at and (datetime.utcnow() - last_sent_at).total_seconds() < 60:
+    if last_sent_at and (utcnow_naive() - last_sent_at).total_seconds() < 60:
         return False, "Please wait a moment before requesting a new code."
 
     window_start = existing.get("send_window_start")
     send_count = int(existing.get("send_count", 0) or 0)
-    if not window_start or (datetime.utcnow() - window_start) > timedelta(hours=1):
+    if not window_start or (utcnow_naive() - window_start) > timedelta(hours=1):
         return True, ""
     if send_count >= 5:
         return False, "Too many codes requested. Please try again later."
@@ -322,7 +458,7 @@ def upsert_and_send_otp(email_lower: str, purpose: str, ip: str | None = None) -
         return False, msg
 
     otp = generate_otp()
-    now = datetime.utcnow()
+    now = utcnow_naive()
     expires_at = now + timedelta(minutes=10)
 
     update = {
@@ -627,9 +763,9 @@ def trigger_budget_alert(user, limit, balance, spent, category=None):
     # Intelligence Metrics: Safepoint & Velocity
     start_date = user.get('start_date')
     if not start_date:
-        start_date = datetime.utcnow()
+        start_date = utcnow_naive()
         
-    days_used = max(1, (datetime.utcnow() - start_date).days)
+    days_used = max(1, (utcnow_naive() - start_date).days)
     days_remaining = max(1, 30 - days_used)
     
     safe_daily_spend = max(0, balance) / days_remaining
@@ -819,20 +955,20 @@ def my_profile():
             # 30-day cycle reset
             start_date = user.get('start_date')
             if not start_date:
-                start_date = datetime.utcnow()
+                start_date = utcnow_naive()
                 
-            if (datetime.utcnow() - start_date).days >= 30:
+            if (utcnow_naive() - start_date).days >= 30:
                 try:
                     mongo.db.monthly_archives.insert_one({
                         'username': user['name'], 'email': user.get('email',''),
                         'cycle_number': user.get('cycle_number',1),
                         'total_spent': user.get('total_spent',0.0),
                         'monthly_limit': user.get('monthly_limit',0.0),
-                        'period_start': start_date, 'period_end': datetime.utcnow(),
+                        'period_start': start_date, 'period_end': utcnow_naive(),
                     })
                     users.update_one({'_id': user['_id']}, {'$set': {
                         'total_spent': 0.0, 'balance': user.get('monthly_limit',0.0),
-                        'start_date': datetime.utcnow(),
+                        'start_date': utcnow_naive(),
                         'alert_10_sent': False, 'alert_5_sent': False, 'over_budget': False,
                     }, '$inc': {'cycle_number': 1}})
                     flash('30-day cycle complete! Budget reset for new month.', 'warning')
@@ -841,7 +977,7 @@ def my_profile():
 
             try:
                 users.update_one({'_id': user['_id']},
-                    {'$set': {'last_login': datetime.utcnow()}, '$inc': {'login_count': 1}})
+                    {'$set': {'last_login': utcnow_naive()}, '$inc': {'login_count': 1}})
             except Exception as e:
                 print(f"[DB] Login update error: {e}")
 
@@ -880,7 +1016,7 @@ def auth_register_verify():
             flash('Code expired or not found. Please request a new code.', 'error')
             return redirect(url_for('auth_register_verify'))
 
-        if doc.get('expires_at') and datetime.utcnow() > doc['expires_at']:
+        if doc.get('expires_at') and utcnow_naive() > doc['expires_at']:
             mongo.db.email_otps.delete_one({'_id': doc['_id']})
             flash('Code expired. Please request a new code.', 'error')
             return redirect(url_for('auth_register_verify'))
@@ -906,7 +1042,7 @@ def auth_register_verify():
         contact = (pending.get('contact') or '').strip()
         password_hash = pending.get('password_hash')
 
-        now = datetime.utcnow()
+        now = utcnow_naive()
         try:
             users.insert_one({
                 'name': name, 'name_lower': name.lower(),
@@ -1064,7 +1200,7 @@ def auth_reset_verify():
             flash('Code expired or not found. Please request a new code.', 'error')
             return redirect(url_for('auth_reset_verify'))
 
-        if otp_doc.get('expires_at') and datetime.utcnow() > otp_doc['expires_at']:
+        if otp_doc.get('expires_at') and utcnow_naive() > otp_doc['expires_at']:
             mongo.db.email_otps.delete_one({'_id': otp_doc['_id']})
             flash('Code expired. Please request a new code.', 'error')
             return redirect(url_for('auth_reset_verify'))
@@ -1272,13 +1408,28 @@ def expense_breakdown():
     """Task 8 Aggregation Pipeline: Offload heavy grouping math to MongoDB natively."""
     username = session.get('username')
     if not username: return jsonify({'error': 'Unauthorized'}), 401
-    
-    # Use aggregation to sum expenses by category, safely dropping paid loans entirely mathematically.
+
+    # Optional filters (backwards-compatible defaults):
+    # - range/today/7d/30d or start/end (see helper)
+    # - include_paid_loans=true to include paid loans
+    # - only_loans=true to include only loan entries
+    range_q, _, _ = _range_query_from_args(request.args)
+    include_paid_loans = _parse_bool(request.args.get("include_paid_loans"))
+    only_loans = _parse_bool(request.args.get("only_loans"))
+
+    match_q = {"username": username}
+    match_q.update(range_q)
+
+    # Previous behavior: exclude paid loans from analytics
+    if include_paid_loans is not True:
+        match_q["loan_status"] = {"$ne": "paid"}
+
+    if only_loans is True:
+        match_q["is_loan"] = True
+
+    # Use aggregation to sum expenses by category.
     pipeline = [
-        {"$match": {
-            "username": username,
-            "loan_status": {"$ne": "paid"}
-        }},
+        {"$match": match_q},
         {"$project": {
             "amount": 1,
             "category": {
@@ -1298,6 +1449,60 @@ def expense_breakdown():
     data = [round(r['total'], 2) for r in results]
     
     return jsonify({"labels": labels, "data": data})
+
+@app.route('/api/category_transactions')
+def category_transactions():
+    """Drilldown: recent transactions for a category (optional range support)."""
+    username = session.get('username')
+    if not username:
+        return jsonify({'error': 'Unauthorized'}), 401
+    if mongo.db is None:
+        return jsonify({'error': 'Database unavailable'}), 503
+
+    category = (request.args.get("category") or "").strip()
+    if not category:
+        return jsonify({'error': 'Missing category'}), 400
+
+    try:
+        limit = int(request.args.get("limit") or 10)
+        limit = max(1, min(limit, 30))
+    except Exception:
+        limit = 10
+
+    range_q, _, _ = _range_query_from_args(request.args)
+
+    q = {"username": username}
+    q.update(range_q)
+
+    # Match "Loans (Pending)/(Paid Back)" pseudo-categories too
+    if category == "Loans (Pending)":
+        q.update({"is_loan": True, "loan_status": "pending"})
+    elif category == "Loans (Paid Back)":
+        q.update({"is_loan": True, "loan_status": "paid"})
+    else:
+        q.update({"is_loan": {"$ne": True}, "category": category})
+
+    docs = list(
+        mongo.db.daily_expenses.find(
+            q,
+            {"username": 0}
+        ).sort("expense_date", -1).limit(limit)
+    )
+
+    out = []
+    for d in docs:
+        out.append({
+            "id": str(d.get("_id")),
+            "category": d.get("category"),
+            "amount": float(d.get("amount", 0) or 0),
+            "description": d.get("description", ""),
+            "expense_date": (d.get("expense_date").isoformat() if d.get("expense_date") else None),
+            "is_loan": bool(d.get("is_loan", False)),
+            "loan_status": d.get("loan_status"),
+            "friend_name": d.get("friend_name"),
+        })
+
+    return jsonify({"items": out})
 
 
 from dateutil.relativedelta import relativedelta
@@ -1381,7 +1586,7 @@ def add_recurring():
         'reminder_days': reminder_days,
         'auto_roll': auto_roll,
         'status': 'pending',
-        'created_at': datetime.utcnow()
+        'created_at': utcnow_naive()
     }
     
     mongo.db.recurring_payments.insert_one(doc)
@@ -1408,7 +1613,7 @@ def pay_recurring(record_id):
             'description': f"[AUTO-LOGGED] Interval Spend: {rec['title']}",
             'expense_date': datetime.now(),
             'is_loan': False,
-            'created_at': datetime.utcnow()
+            'created_at': utcnow_naive()
         }
         mongo.db.daily_expenses.insert_one(expense_doc)
         
@@ -1521,7 +1726,7 @@ def add_expense():
             'username': username, 'category': category,
             'amount': amount, 'description': description or f'{category} expense',
             'expense_date': expense_date, 'is_loan': is_loan,
-            'created_at': datetime.utcnow(),
+            'created_at': utcnow_naive(),
         }
 
         if is_loan:
@@ -1594,6 +1799,9 @@ def add_expense():
         return redirect(url_for('my_expenses'))
 
     except Exception as e:
+        import traceback
+        with open('debug_add_expense.log', 'w') as f:
+            f.write(traceback.format_exc())
         print(f'[Expense] Error: {e}')
         if request.headers.get('Accept') == 'application/json':
             return jsonify({'success': False, 'error': str(e)})
@@ -1648,6 +1856,22 @@ def mark_loan_paid(expense_id):
             {'_id': exp['_id']},
             {'$set': {'loan_status': 'paid'}}
         )
+
+        # Notify borrower that the loan was successfully paid (async)
+        try:
+            friend_email = exp.get('friend_email')
+            if friend_email:
+                friend_name = exp.get('friend_name', 'Friend')
+                desc = exp.get('description', 'Loan')
+                amount = float(exp.get('amount', 0) or 0)
+                bcc_email = session.get('email', '')
+                threading.Thread(
+                    target=send_loan_paid_email_async,
+                    args=(friend_email, friend_name, username, amount, desc, bcc_email),
+                    daemon=True
+                ).start()
+        except Exception as e:
+            print(f"[Mail] Loan paid notify skipped: {e}")
         
         # User requested: Decreasing expenses because they received the money back
         # Simply re-syncing the ledger automatically achieves this mathematically!
@@ -1685,6 +1909,25 @@ def delete_expense(expense_id):
     return redirect(url_for('my_expenses'))
 
 
+@app.route('/api/delete_expense/<expense_id>', methods=['POST'])
+def api_delete_expense(expense_id):
+    """JSON version of expense deletion (for dashboard quick actions)."""
+    username = session.get('username')
+    if not username or mongo.db is None:
+        return jsonify({'success': False, 'error': 'Unauthorized or database offline'}), 401
+
+    try:
+        exp = mongo.db.daily_expenses.find_one({'_id': ObjectId(expense_id), 'username': username})
+        if not exp:
+            return jsonify({'success': False, 'error': 'Expense not found'}), 404
+
+        mongo.db.daily_expenses.delete_one({'_id': ObjectId(expense_id)})
+        new_spent, new_bal = sync_user_ledger(username)
+        return jsonify({'success': True, 'new_balance': new_bal, 'new_total': new_spent})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/spend_data')
 def spend_data():
     """Chart.js data API (Task 8 placeholder)."""
@@ -1701,30 +1944,192 @@ def timeline_data():
     username = session['username']
     now = datetime.now()
 
-    
-    # Hourly
+    include_paid_loans = _parse_bool(request.args.get("include_paid_loans"))
+    only_loans = _parse_bool(request.args.get("only_loans"))
+
+    base_q = {"username": username}
+    if include_paid_loans is not True:
+        base_q["loan_status"] = {"$ne": "paid"}
+    if only_loans is True:
+        base_q["is_loan"] = True
+
+    # Hourly (today)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     hourly_labels = [f"{h:02d}:00" for h in range(24)]
     hourly_data = [0] * 24
-    
-    for exp in mongo.db.daily_expenses.find({'username': username, 'expense_date': {'$gte': today_start}}):
-        h = exp['expense_date'].hour
-        hourly_data[h] += round(float(exp.get('amount', 0)), 2)
-        
+    q_hour = dict(base_q)
+    q_hour["expense_date"] = {"$gte": today_start}
+
+    for exp in mongo.db.daily_expenses.find(q_hour, {"amount": 1, "expense_date": 1}):
+        dt = exp.get("expense_date")
+        if not dt:
+            continue
+        h = dt.hour
+        hourly_data[h] += round(float(exp.get('amount', 0) or 0), 2)
+
     # Daily (last 30 days)
     thirty_days_ago = today_start - timedelta(days=29)
     daily_labels = [(thirty_days_ago + timedelta(days=d)).strftime('%b %d') for d in range(30)]
     daily_data = [0] * 30
-    
-    for exp in mongo.db.daily_expenses.find({'username': username, 'expense_date': {'$gte': thirty_days_ago}}):
-        days_diff = (exp['expense_date'] - thirty_days_ago).days
+    q_day = dict(base_q)
+    q_day["expense_date"] = {"$gte": thirty_days_ago}
+
+    for exp in mongo.db.daily_expenses.find(q_day, {"amount": 1, "expense_date": 1}):
+        dt = exp.get("expense_date")
+        if not dt:
+            continue
+        days_diff = (dt - thirty_days_ago).days
         if 0 <= days_diff < 30:
-            daily_data[days_diff] += round(float(exp.get('amount', 0)), 2)
-            
+            daily_data[days_diff] += round(float(exp.get('amount', 0) or 0), 2)
+
+    return jsonify({'hourly': {'labels': hourly_labels, 'data': hourly_data}, 'daily': {'labels': daily_labels, 'data': daily_data}})
+
+
+@app.route('/api/dashboard_summary')
+def dashboard_summary():
+    """Small KPI payload for the main dashboard."""
+    username = session.get('username')
+    if not username:
+        return jsonify({'error': 'Unauthorized'}), 401
+    if mongo.db is None:
+        return jsonify({'error': 'Database unavailable'}), 503
+
+    user = mongo.db.users.find_one({'name': username}, {'password': 0})
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    limit = float(user.get("monthly_limit", 0) or 0)
+    spent = float(user.get("total_spent", 0) or 0)
+    balance = float(user.get("balance", 0) or 0)
+
+    start_date = user.get("start_date") or utcnow_naive()
+    try:
+        days_used = max(1, (utcnow_naive() - start_date).days)
+    except Exception:
+        days_used = 1
+    burn = (spent / days_used) if days_used else spent
+
+    # Cycle info (assumes 30-day rolling cycle used elsewhere)
+    cycle_len = 30
+    try:
+        cycle_day = min(cycle_len, max(1, (utcnow_naive() - start_date).days + 1))
+    except Exception:
+        cycle_day = 1
+    days_remaining = max(0, cycle_len - cycle_day)
+    safe_daily_spend = (max(0.0, balance) / max(1, days_remaining)) if days_remaining > 0 else max(0.0, balance)
+
+    # Pending loans
+    pending_loan_docs = list(mongo.db.daily_expenses.find(
+        {'username': username, 'is_loan': True, 'loan_status': 'pending'},
+        {'amount': 1}
+    ))
+    pending_loans_amt = float(sum(d.get("amount", 0) or 0 for d in pending_loan_docs))
+    pending_loans_count = len(pending_loan_docs)
+
+    # Upcoming recurring payment (next due)
+    now = datetime.now()
+    upcoming = mongo.db.recurring_payments.find_one(
+        {'username': username, 'status': 'pending', 'due_date': {'$gte': now}},
+        sort=[('due_date', 1)]
+    )
+
+    upcoming_payload = None
+    if upcoming:
+        upcoming_payload = {
+            "id": str(upcoming.get("_id")),
+            "title": upcoming.get("title", ""),
+            "amount": float(upcoming.get("amount", 0) or 0),
+            "due_date": upcoming.get("due_date").isoformat() if upcoming.get("due_date") else None,
+            "days_left": max(0, (upcoming.get("due_date").date() - now.date()).days) if upcoming.get("due_date") else None
+        }
+
     return jsonify({
-        'hourly': {'labels': hourly_labels, 'data': hourly_data},
-        'daily': {'labels': daily_labels, 'data': daily_data}
+        "limit": limit,
+        "spent": spent,
+        "balance": balance,
+        "burn_rate_per_day": round(burn, 2),
+        "cycle_day": int(cycle_day),
+        "days_remaining": int(days_remaining),
+        "safe_daily_spend": round(safe_daily_spend, 2),
+        "pending_loans_amount": round(pending_loans_amt, 2),
+        "pending_loans_count": pending_loans_count,
+        "upcoming_due": upcoming_payload,
+        "cycle_number": int(user.get("cycle_number", 1) or 1),
     })
+
+
+@app.route('/api/upcoming_dues')
+def upcoming_dues():
+    """Upcoming recurring dues list for dashboard."""
+    username = session.get('username')
+    if not username:
+        return jsonify({'error': 'Unauthorized'}), 401
+    if mongo.db is None:
+        return jsonify({'error': 'Database unavailable'}), 503
+
+    try:
+        limit = int(request.args.get("limit") or 5)
+        limit = max(1, min(limit, 10))
+    except Exception:
+        limit = 5
+
+    now = datetime.now()
+    docs = list(
+        mongo.db.recurring_payments.find(
+            {'username': username, 'status': 'pending', 'due_date': {'$gte': now}},
+            {'username': 0}
+        ).sort('due_date', 1).limit(limit)
+    )
+
+    items = []
+    for d in docs:
+        due = d.get("due_date")
+        items.append({
+            "id": str(d.get("_id")),
+            "title": d.get("title", ""),
+            "amount": float(d.get("amount", 0) or 0),
+            "due_date": due.isoformat() if due else None,
+            "days_left": max(0, (due.date() - now.date()).days) if due else None
+        })
+
+    return jsonify({"items": items})
+
+@app.route('/api/recent_transactions')
+def recent_transactions():
+    """Recent expenses/loans for dashboard (safe subset)."""
+    username = session.get('username')
+    if not username:
+        return jsonify({'error': 'Unauthorized'}), 401
+    if mongo.db is None:
+        return jsonify({'error': 'Database unavailable'}), 503
+
+    try:
+        limit = int(request.args.get("limit") or 6)
+        limit = max(1, min(limit, 12))
+    except Exception:
+        limit = 6
+
+    docs = list(
+        mongo.db.daily_expenses.find(
+            {'username': username},
+            {'username': 0}
+        ).sort('expense_date', -1).limit(limit)
+    )
+
+    out = []
+    for d in docs:
+        out.append({
+            "id": str(d.get("_id")),
+            "category": d.get("category"),
+            "amount": float(d.get("amount", 0) or 0),
+            "description": d.get("description", ""),
+            "expense_date": (d.get("expense_date").isoformat() if d.get("expense_date") else None),
+            "is_loan": bool(d.get("is_loan", False)),
+            "loan_status": d.get("loan_status"),
+            "friend_name": d.get("friend_name"),
+        })
+
+    return jsonify({"items": out})
 
 
 @app.errorhandler(404)
