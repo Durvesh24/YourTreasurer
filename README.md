@@ -4,6 +4,8 @@ Digital CFO for Students | CommitVerse 2026 Submission
 
 YourTreasurer is a high-impact personal finance tool designed to act as a "financial bodyguard" for students. Beyond simple tracking, it manages monthly allowances, handles social liabilities (peer-to-peer loans), and ensures audit-ready compliance for campus life through automated logic and cloud integration.
 
+Chexk the site at https://your-treasurer.vercel.app/
+
 ✨ Key Features
 Guardian Mail Logic: Automated Flask-Mail alerts triggered at 10%, 5%, and 0% budget thresholds.
 
